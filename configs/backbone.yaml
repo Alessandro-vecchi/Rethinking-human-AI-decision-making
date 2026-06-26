@@ -1,0 +1,5 @@
+# M2 — shared AI backbone reused by ALL arms. Decision (reuse Okati ResNet vs fresh) logged in DECISIONS.md.
+seed: 0
+features: resnet_okati                  # He et al. 2015 representation (GROUND_TRUTH §4); or 'fresh'
+threshold_default: 0.5                  # AI-alone baseline threshold
+export_scores_path: results/backbone_scores.parquet

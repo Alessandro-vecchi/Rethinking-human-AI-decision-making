@@ -1,0 +1,8 @@
+# M1 — frozen split + multi-rater label table. Knobs only; logic in src/haidc/data/.
+seed: 0
+split: {train: 0.70, val: 0.15, test: 0.15}
+dataset:
+  name: galaxy_zoo_binary_10k          # Okati 2021 subset (fns 8-9); binary {early_type, spiral}
+  source: third_party/differentiable-learning-under-triage   # verify rater counts present (Data risk #1)
+  min_votes_per_image: 2               # required for h1/h2 draw without replacement
+manifest_path: data/split_manifest.json  # hashed + committed; checked by `make verify-split`

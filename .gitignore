@@ -1,0 +1,34 @@
+# Data & large artifacts (never committed — see data/README.md)
+data/**
+!data/README.md
+results/figures/**
+results/tables/**
+!results/**/.gitkeep
+*.pt
+*.ckpt
+*.npz
+*.parquet
+
+# Vendored upstream code is pinned by SHA in DECISIONS.md, not committed wholesale
+third_party/**
+!third_party/README.md
+
+# Python
+.AIdm_venv/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

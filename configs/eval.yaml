@@ -1,0 +1,5 @@
+# M6 — metrics + Pareto frontier. Metrics defined ONCE in src/haidc/eval/.
+bootstrap: {n_resamples: 1000, ci: 0.95, seed: 0}
+rater_draw_seeds: [0, 1, 2, 3, 4]       # variability band for human-draw arms (HCT, single-human)
+figure_path: results/figures/pareto_frontier.png
+table_path: results/tables/summary.csv
