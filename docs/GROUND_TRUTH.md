@@ -170,8 +170,15 @@ trusting any number.
 ## 8. Open questions log (resolve, then move the answer up with a [V] and a citation)
 - [V] ~~Does Okati's repo ship per-image rater counts for Galaxy Zoo?~~ **No** — resolved in M1
   (§4, HANDOFF §3c). Counts come from Willett 2013 via the crosswalk; default label is `y_debiased`.
-- [U] Exact storage format of Okati's Galaxy Zoo features/labels in the repo (ResNet embeddings? raw images?).
+- [V] ~~Exact storage format of Okati's Galaxy Zoo features/labels in the repo (ResNet embeddings?
+      raw images?).~~ **Raw images** — resolved in M2 (DECISIONS 2026-06-26 probe, Okati SHA
+      43ec215). `prepare_data.py` stores `X=(10000,3,224,224)` raw preprocessed images (no feature
+      extraction); `galaxy_data.pkl` is *generated* from the Kaggle image folder, not shipped; the
+      shipped `results/*.pkl` are triage outputs on Okati's own unseeded split with no GalaxyIDs.
 - [U] Mozannar surrogate exact form to re-derive in code (§6 porting note).
-- [U] Pinned commit SHAs for both vendored repos (record in DECISIONS.md once cloned).
-- [U] Whether to reuse Okati's exact ResNet features for the shared backbone or train a fresh one
-      (decide in M2; whichever is chosen must be used by all arms).
+- [V] ~~Pinned commit SHAs for both vendored repos.~~ Okati pinned **43ec215** (M2, DECISIONS
+      2026-06-26). Mozannar still [U] (record when cloned for the Mozannar arm).
+- [V] ~~Whether to reuse Okati's exact ResNet features for the shared backbone or train a fresh
+      one.~~ **Train fresh** — resolved in M2: reuse is impossible (no shipped GalaxyID-aligned
+      embeddings; see above). Backbone = Okati-faithful scratch resnet50 trained on the frozen
+      train split vs `y_debiased`, reused by all arms (DECISIONS 2026-06-26).

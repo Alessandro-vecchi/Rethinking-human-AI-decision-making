@@ -1,5 +1,32 @@
-# M2 — shared AI backbone reused by ALL arms. Decision (reuse Okati ResNet vs fresh) logged in DECISIONS.md.
+# M2 — shared AI backbone reused by ALL arms. Knobs only; logic in src/haidc/arms/backbone.py.
+# Decision (reuse Okati ResNet vs fresh) logged in DECISIONS.md 2026-06-26: the probe found Okati
+# ships NO GalaxyID-aligned embeddings (prepare_data.py stores raw images; ResNet trained end-to-end
+# in train.ipynb), so 'resnet_okati' reuse is unavailable -> train fresh.
 seed: 0
-features: resnet_okati                  # He et al. 2015 representation (GROUND_TRUTH §4); or 'fresh'
-threshold_default: 0.5                  # AI-alone baseline threshold
-export_scores_path: results/backbone_scores.parquet
+features: fresh                          # 'resnet_okati' (reuse) unavailable per probe; only 'fresh'
+threshold_default: 0.5                   # AI-alone baseline threshold
+
+# Inputs (from M1; frozen).
+manifest_path: data/split_manifest.json
+label_table_path: data/label_table.parquet
+images_dir: data/raw/images_training_rev1   # Kaggle 'galaxy-zoo-the-galaxy-challenge' train images
+                                            # (Okati fn 9); git-ignored, ~3 GB, must be downloaded.
+
+# Okati-faithful train recipe (train.ipynb cell 10; HANDOFF §3a). resnet50 scratch init +
+# Linear(2048,2)+LogSoftmax head + NLLLoss are fixed in code; these are the tunable knobs.
+train:
+  epochs: 50                            # Okati cell 10 num_epochs
+  batch_size: 128                       # Okati cell 10
+  lr: 0.001                             # Okati uses Adam default lr (no lr arg in cell 10)
+  weight_decay: 0.0
+
+# Bootstrap CI for AI-alone accuracy (REPRODUCIBILITY.md). Inline here until the shared eval
+# module exists (M6 to absorb; M2-PLAN §2).
+bootstrap:
+  n_boot: 1000
+  ci: 0.95
+
+# Outputs.
+artifact_path: results/backbone.pt                  # git-ignored model weights
+run_manifest_path: results/backbone_run.json        # config + seed + SHAs + metrics
+export_scores_path: results/backbone_scores.parquet # one row/test GalaxyID, P(spiral|x) in [0,1]
