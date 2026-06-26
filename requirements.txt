@@ -1,15 +1,19 @@
-# Python 3.11+. Pin exact versions on first successful environment build,
-# then record the resolved lockfile hash in docs/DECISIONS.md (REPRODUCIBILITY.md).
-torch>=2.2
-torchvision>=0.17
-numpy>=1.26
-scipy>=1.11
-pandas>=2.1
-scikit-learn>=1.4
-matplotlib>=3.8
-pyyaml>=6.0
-tqdm>=4.66
+# Python 3.12 (3.11+). Pinned on first successful build (2026-06-26); resolved-lockfile
+# sha256 recorded in docs/DECISIONS.md (REPRODUCIBILITY.md).
+#
+# NumPy is pinned <2 because torch 2.2.2 (the latest macOS x86_64 wheel) is built against
+# the NumPy 1.x C-API; scipy is pinned to its last NumPy-1.26-compatible release (1.13.1).
+torch==2.2.2
+torchvision==0.17.2
+numpy==1.26.4
+scipy==1.13.1
+pandas==2.2.3
+pyarrow==24.0.0          # parquet engine for the label table (lossless int64 dr7objid)
+scikit-learn==1.9.0
+matplotlib==3.11.0
+PyYAML==6.0.3
+tqdm==4.68.3
 # dev
-pytest>=8.0
-pytest-cov>=5.0
-ruff>=0.4
+pytest==9.1.1
+pytest-cov==7.1.0
+ruff==0.15.20

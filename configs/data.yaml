@@ -3,6 +3,15 @@ seed: 0
 split: {train: 0.70, val: 0.15, test: 0.15}
 dataset:
   name: galaxy_zoo_binary_10k          # Okati 2021 subset (fns 8-9); binary {early_type, spiral}
-  source: third_party/differentiable-learning-under-triage   # verify rater counts present (Data risk #1)
   min_votes_per_image: 2               # required for h1/h2 draw without replacement
-manifest_path: data/split_manifest.json  # hashed + committed; checked by `make verify-split`
+# Per-image rater counts do NOT exist in Okati's repo (Data risk #1, RESOLVED — HANDOFF §3c).
+# They come from the Willett 2013 tables via the content-based GalaxyID->dr7objid crosswalk,
+# restricted to accepted==True (the dist<0.30 high-precision subset; DECISIONS.md 2026-06-26).
+inputs:
+  crosswalk: data/galaxyid_to_dr7objid.csv                 # cols: GalaxyID,dr7objid,dist,mutual,accepted
+  willett:                                                  # raw vote counts (urn source)
+    - data/raw/zoo2MainSpecz.csv.gz
+    - data/raw/zoo2MainPhotoz.csv.gz
+  kaggle: data/raw/training_solutions_rev1.csv              # aggregate fractions -> y_debiased
+label_table_path: data/label_table.parquet                 # git-ignored urn/label table
+manifest_path: data/split_manifest.json                    # hashed + committed; checked by `make verify-split`

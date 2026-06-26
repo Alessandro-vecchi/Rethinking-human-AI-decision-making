@@ -1,6 +1,8 @@
 # Data & large artifacts (never committed — see data/README.md)
 data/**
 !data/README.md
+# the frozen split is committed (CLAUDE.md invariant #2); the label table is not
+!data/split_manifest.json
 results/figures/**
 results/tables/**
 !results/**/.gitkeep

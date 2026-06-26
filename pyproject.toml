@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "haidc"
+version = "0.0.0"
+description = "HCT-vs-L2D head-to-head on the Galaxy Zoo binary subset."
+requires-python = ">=3.11"
+# Runtime deps live in requirements.txt (pinned by `make env`); install with
+# `pip install -e . --no-deps` so this file is not a second source of truth.
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+src = ["src", "tests"]
+line-length = 100

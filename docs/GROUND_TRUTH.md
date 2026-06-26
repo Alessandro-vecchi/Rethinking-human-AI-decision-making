@@ -89,6 +89,14 @@ HCT model to train and no HCT loss.
 - **30+ human labels per image. [V]** Okati's text calls them "human experts."
 - Per-image label distribution `P(h|x) ∝ n_x(h)` (number of raters choosing label `h`); the
   **ground-truth label is the rater majority**: `y = argmax_h P(h|x)`. **[V]**
+  > **[V] Correction (2026-06-26, DECISIONS.md):** the literal "`y ∝ raw counts`" is an
+  > oversimplification. Okati's pipeline (and ours) uses the **debiased** Kaggle/Willett vote
+  > **fraction** argmax (`y_debiased`), the canonical GZ consensus label and the L2D reproduction
+  > target — **not** the raw-count argmax. Evidence: the crosswalk shows Kaggle Class1.x == Willett
+  > debiased at median per-dim diff 0.0001; raw-count vs debiased argmax disagree on **20.86%** of
+  > the matched subset (6.1% vs 26.8% spiral). The raw counts are still the urn/`P(h|x)` for HCT's
+  > h1/h2 draw (integer counts required); the ~21% gap is the disclosed single-human-vs-consensus
+  > error rate (single-human accuracy ≈ 79%).
 - Features: galaxy images → **deep residual network (He et al. 2015)** representation. **[V]**
 - Pixel-map source: Kaggle `galaxy-zoo-the-galaxy-challenge` (Okati **fn 9**). **[V]**
 
@@ -105,10 +113,11 @@ HCT model to train and no HCT loss.
 draw needs, per image, either the raw individual rater votes or the per-label vote counts
 `(n_early, n_spiral)` with `n_early + n_spiral ≥ 2`. Drawing two distinct labels without
 replacement is then a hypergeometric draw of 2 from the `N ≥ 30` votes — counts suffice; raw
-per-rater identities are not required. **[U] It is unverified whether Okati's released repo ships
-the per-image counts or only the final majority label `y`.** If only `y` is shipped, the h1/h2
-draw is impossible from the inherited data and the data agent must locate the counts (Kaggle
-solutions file / Galaxy Zoo DR) before HCT can run. Resolve this in M1; do not assume.
+per-rater identities are not required. **[V] RESOLVED (2026-06-26, M1 / HANDOFF §3c):** Okati's
+released repo ships **no** per-image rater counts for Galaxy Zoo — only aggregate fractions and the
+majority label. The h1/h2 counts are therefore recovered from the **Willett 2013** tables
+(`zoo2MainSpecz` + `zoo2MainPhotoz`) via the content-based `GalaxyID→dr7objid` crosswalk, restricted
+to `accepted==True` (4,626 → N=4,621 after filters). See DECISIONS.md 2026-06-26 and `data/README.md`.
 
 ---
 
@@ -159,7 +168,8 @@ trusting any number.
   shared module in `src/haidc/eval/`. No arm computes its own metrics.
 
 ## 8. Open questions log (resolve, then move the answer up with a [V] and a citation)
-- [U] Does Okati's repo ship per-image rater counts for Galaxy Zoo? (Data risk #1, §4.)
+- [V] ~~Does Okati's repo ship per-image rater counts for Galaxy Zoo?~~ **No** — resolved in M1
+  (§4, HANDOFF §3c). Counts come from Willett 2013 via the crosswalk; default label is `y_debiased`.
 - [U] Exact storage format of Okati's Galaxy Zoo features/labels in the repo (ResNet embeddings? raw images?).
 - [U] Mozannar surrogate exact form to re-derive in code (§6 porting note).
 - [U] Pinned commit SHAs for both vendored repos (record in DECISIONS.md once cloned).

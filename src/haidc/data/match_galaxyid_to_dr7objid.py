@@ -17,8 +17,10 @@ Signature: 37-dim path-scaled debiased vote vector (Willett Table 2 tree order).
 Requires: numpy, pandas, scipy.
 """
 from __future__ import annotations
-import argparse, re
-import numpy as np, pandas as pd
+import argparse
+import re
+import numpy as np
+import pandas as pd
 from scipy.spatial import cKDTree
 
 TASK_SIZES = [3, 2, 2, 2, 4, 2, 3, 7, 3, 3, 6]
@@ -30,7 +32,8 @@ def i(t, a): return OFF[t - 1] + a
 
 
 def path_scale(within: np.ndarray) -> np.ndarray:
-    N = within.shape[0]; w = np.ones((N, 12))
+    N = within.shape[0]
+    w = np.ones((N, 12))
     w[:, 2] = within[:, i(1, 1)]
     w[:, 7] = within[:, i(1, 0)]
     w[:, 3] = within[:, i(2, 1)] * w[:, 2]
@@ -82,7 +85,8 @@ def main():
     kag = pd.read_csv(a.kaggle, dtype={"GalaxyID": "int64"})
     k_ids, k_sig = kaggle_sig(kag)
     if not a.full:
-        keep = np.isin(k_ids, np.sort(k_ids)[:10_000]); k_ids, k_sig = k_ids[keep], k_sig[keep]
+        keep = np.isin(k_ids, np.sort(k_ids)[:10_000])
+        k_ids, k_sig = k_ids[keep], k_sig[keep]
     h_obj, h_sig = gz2_sig(a.gz2, a.flavor)
     print(f"matching {len(k_ids)} Kaggle vs {len(h_obj)} GZ2 rows "
           f"(flavor={a.flavor}, {len(a.gz2)} table(s))")

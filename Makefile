@@ -5,8 +5,8 @@
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?# .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?# "}{printf "  %-14s %s\n", $$1, $$2}'
 
-env:           # create venv + install pinned deps
-	python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
+env:           # create venv + install pinned deps + editable package
+	python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt && pip install -e . --no-deps
 
 test:          # run unit tests (must pass before any arm is marked done)
 	pytest -q --cov=src/haidc

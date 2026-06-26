@@ -121,7 +121,8 @@ def main() -> int:
         ok = np.isfinite(x) & np.isfinite(y)
         r = np.corrcoef(x[ok], y[ok])[0, 1]
         md = float(np.median(np.abs(x[ok] - y[ok])))
-        rs.append(r); diffs.append(md)
+        rs.append(r)
+        diffs.append(md)
         print(f"  {resp:9s}  Pearson r = {r:6.3f}   median|diff| = {md:.4f}")
 
     r_min, diff_max = min(rs), max(diffs)
