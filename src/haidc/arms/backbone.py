@@ -37,6 +37,20 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
+# --------------------------------------------------------------------------- device
+def resolve_device(spec="auto"):
+    """Resolve a device spec to a `torch.device`. One place owns CPU-vs-CUDA selection.
+
+    `"auto"` -> cuda when available else cpu; `"cuda"`/`"cpu"` honored explicitly. The same code
+    runs CPU on this machine (CUDA=False) and CUDA on Colab — no source edits between the two.
+    """
+    import torch
+
+    if spec in (None, "auto"):
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device(spec)
+
+
 # --------------------------------------------------------------------------- model
 def build_model():
     """Okati-faithful classifier: scratch resnet50 with a 2-way LogSoftmax head (train.ipynb cell 10)."""
@@ -48,18 +62,37 @@ def build_model():
     return model
 
 
-def train_model(model, X, y, *, epochs, batch_size, lr, weight_decay=0.0, return_losses=False):
+def train_model(
+    model, X, y, *, epochs, batch_size, lr, weight_decay=0.0,
+    device=None, channels_last=False, return_losses=False,
+):
     """Train with NLLLoss + Adam on (X, y). Returns the model, or per-epoch mean losses if asked.
 
     X: float array/tensor (N, 3, 224, 224); y: int array/tensor (N,) in {0, 1}. Okati uses Adam
     with its default lr; `lr`/`epochs`/`batch_size` are config-driven (CODING.md "config over constants").
+
+    GPU path (FP32, deterministic-faithful — DECISIONS 2026-06-27): on CUDA the host tensor is
+    pinned and batches are moved with `non_blocking=True`; `channels_last` lays conv activations out
+    for the GPU. ResNet-50's backward includes ops with no deterministic CUDA implementation
+    (e.g. `adaptive_avg_pool2d_backward_cuda`), which would raise under the strict
+    `use_deterministic_algorithms(True)` set by `seed_everything`; on CUDA we relax to
+    `warn_only=True` (documented best-effort GPU determinism). The CPU path is numerically
+    unchanged from M2's original (defaults resolve to cpu, no pinning, no warn_only relaxation).
     """
     import torch
 
-    device = torch.device("cpu")
+    device = resolve_device(device)
+    use_cuda = device.type == "cuda"
+    if use_cuda:
+        # ResNet-50 backward hits nondeterministic CUDA ops; warn instead of raising (DECISIONS).
+        torch.use_deterministic_algorithms(True, warn_only=True)
     model = model.to(device).train()
+    if use_cuda and channels_last:
+        model = model.to(memory_format=torch.channels_last)
     X = torch.as_tensor(np.asarray(X), dtype=torch.float32)
     y = torch.as_tensor(np.asarray(y), dtype=torch.long)
+    if use_cuda:
+        X = X.pin_memory()  # page-locked host memory -> overlap H2D copy with compute
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     loss_func = torch.nn.NLLLoss()
     n = X.shape[0]
@@ -70,7 +103,10 @@ def train_model(model, X, y, *, epochs, batch_size, lr, weight_decay=0.0, return
         batch_losses = []
         for b in range(n_batches):
             idx = perm[b * batch_size : (b + 1) * batch_size]
-            xb, yb = X[idx].to(device), y[idx].to(device)
+            xb = X[idx].to(device, non_blocking=use_cuda)
+            yb = y[idx].to(device, non_blocking=use_cuda)
+            if use_cuda and channels_last:
+                xb = xb.to(memory_format=torch.channels_last)
             opt.zero_grad()
             loss = loss_func(model(xb), yb)
             loss.backward()
@@ -80,16 +116,27 @@ def train_model(model, X, y, *, epochs, batch_size, lr, weight_decay=0.0, return
     return epoch_losses if return_losses else model
 
 
-def predict_spiral_proba(model, X, *, batch_size=128):
-    """Continuous, pre-threshold P(spiral|x) in [0,1] for every row of X (eval mode, no grad)."""
+def predict_spiral_proba(model, X, *, batch_size=128, channels_last=False):
+    """Continuous, pre-threshold P(spiral|x) in [0,1] for every row of X (eval mode, no grad).
+
+    Device-agnostic: batches follow the model's own device (so a CUDA-resident model scores on the
+    GPU without the caller juggling `.cpu()`), and results are pulled back to a numpy float64 array.
+    """
     import torch
 
     model = model.eval()
+    device = next(model.parameters()).device
+    use_cuda = device.type == "cuda"
     X = torch.as_tensor(np.asarray(X), dtype=torch.float32)
+    if use_cuda:
+        X = X.pin_memory()
     out = []
     with torch.no_grad():
         for b in range(0, X.shape[0], batch_size):
-            logp = model(X[b : b + batch_size])              # LogSoftmax outputs
+            xb = X[b : b + batch_size].to(device, non_blocking=use_cuda)
+            if use_cuda and channels_last:
+                xb = xb.to(memory_format=torch.channels_last)
+            logp = model(xb)                                 # LogSoftmax outputs
             out.append(torch.exp(logp)[:, SPIRAL_CLASS].cpu().numpy())
     return np.concatenate(out).astype(np.float64)
 
@@ -213,6 +260,8 @@ def run(cfg: dict) -> dict:
         raise RuntimeError(f"{len(missing)} split GalaxyIDs lack a y_debiased label (join confound)")
 
     tr = cfg["train"]
+    device = resolve_device(tr.get("device", "auto"))
+    channels_last = bool(tr.get("channels_last", True))
     X_train = load_images_for_ids(split["train"], cfg["images_dir"])
     y_train = np.array([labels[g] for g in split["train"]], dtype="int64")
 
@@ -221,11 +270,14 @@ def run(cfg: dict) -> dict:
         model, X_train, y_train,
         epochs=int(tr["epochs"]), batch_size=int(tr["batch_size"]),
         lr=float(tr["lr"]), weight_decay=float(tr.get("weight_decay", 0.0)),
+        device=device, channels_last=channels_last,
     )
 
     X_test = load_images_for_ids(split["test"], cfg["images_dir"])
     y_test = np.array([labels[g] for g in split["test"]], dtype="int64")
-    scores = predict_spiral_proba(model, X_test, batch_size=int(tr["batch_size"]))
+    scores = predict_spiral_proba(
+        model, X_test, batch_size=int(tr["batch_size"]), channels_last=channels_last
+    )
 
     df = export_scores(split["test"], scores)
     Path(cfg["export_scores_path"]).parent.mkdir(parents=True, exist_ok=True)
@@ -240,6 +292,7 @@ def run(cfg: dict) -> dict:
     )
 
     Path(cfg["artifact_path"]).parent.mkdir(parents=True, exist_ok=True)
+    model.to("cpu")  # portable artifact: a CPU-saved state_dict loads on any device
     torch.save(model.state_dict(), cfg["artifact_path"])
 
     manifest = {
@@ -248,6 +301,10 @@ def run(cfg: dict) -> dict:
         "seed": seed,
         "git_sha": _git_sha(),
         "vendored_okati_sha": _vendored_sha(),
+        "device": device.type,
+        "channels_last": channels_last,
+        "torch_version": torch.__version__,
+        "cuda_version": torch.version.cuda,
         "n_train": len(split["train"]),
         "n_test": len(split["test"]),
         "threshold": thr,

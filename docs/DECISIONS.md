@@ -123,6 +123,44 @@ here in the same change. Format:
   (raw images); reuse-vs-train backbone choice (train fresh); Okati vendored SHA pinned (43ec215).
 - Status: active (M2 partial — code/tests landed; full-train sanity gate #2 pending TIME GATE go/no-go).
 
+## 2026-06-27 — M2 backbone made GPU-native (TIME GATE resolved via Colab)
+- Context: `backbone.py` hardcoded `device = torch.device("cpu")` and `predict_spiral_proba` never
+  left CPU, so the 50-epoch ResNet-50 train projected to ~90 h (DECISIONS 2026-06-26 TIME GATE).
+  No local GPU is available; the run will execute on a Colab GPU runtime via `notebooks/m2_colab.ipynb`.
+- Decision (TIME GATE): **resolved via Colab GPU.** `backbone.py` is now device-agnostic — a single
+  `resolve_device("auto")` selects cuda when available else cpu, so the *same* committed code runs CPU
+  here (CUDA=False) and CUDA on Colab. This removes the notebook's runtime monkey-patch (old Cell 7),
+  which is deleted.
+- Decision (precision): **FP32, deterministic-faithful — no AMP, no TF32, `cudnn.benchmark` stays
+  False.** Preserves Okati's FP32 recipe and the ~0.83 anchor and keeps reproducibility (CLAUDE.md #2,
+  REPRODUCIBILITY.md). GPU speedup comes from running on the GPU at all + `channels_last` conv layout
+  + pinned host tensor with `non_blocking=True` H2D copies — none of which change numerics. AMP/TF32
+  were considered and rejected (max-throughput) because they deviate from the published recipe and
+  weaken bitwise reproducibility. Config knobs added: `train.device: auto`, `train.channels_last: true`.
+- Determinism caveat (REPRODUCIBILITY.md "document any op that cannot be made deterministic"):
+  ResNet-50's CUDA backward includes ops with no deterministic implementation (e.g.
+  `adaptive_avg_pool2d_backward_cuda`) which **raise** under the strict
+  `torch.use_deterministic_algorithms(True)` set by `seed_everything`. On the CUDA path only,
+  `train_model` relaxes to `use_deterministic_algorithms(True, warn_only=True)` (best-effort GPU
+  determinism); the CPU path stays strict and the CPU determinism test is unchanged. The notebook
+  keeps `CUBLAS_WORKSPACE_CONFIG=":4096:8"` so cuBLAS GEMMs stay deterministic. Bitwise
+  cross-device (CPU vs GPU) reproducibility is not claimed; the run manifest now records the resolved
+  `device`, `torch_version`, and `cuda_version` for provenance.
+- Env note: Colab uses a CUDA-build torch (deviates from the pinned CPU `torch==2.2.2`, expected per
+  DECISIONS 2026-06-26 env note). Record the GPU torch version + a fresh `pip freeze` lockfile hash
+  after the first successful Colab run.
+- Notebook (`notebooks/m2_colab.ipynb`, moved to top-level — `src/` is the importable package root):
+  removed the GPU monkey-patch cell; fixed the Okati fidelity grep path
+  (`Galaxy-zoo/prepare_data.py`); aligned the clone slug to the real remote case.
+- Tests: `tests/arms/test_backbone_device.py` added first (red→green) — `resolve_device`, train via
+  the device path, and device-inferred `predict_spiral_proba`. Existing M1/M2 tests unchanged and green.
+- Sanity gate #2 (AI-alone TEST accuracy ≈0.83 + bootstrap CI): **still pending** — to be filled from
+  the Colab `results/backbone_run.json` once the user runs the notebook end-to-end. Do not cite a
+  number before then.
+- Evidence: `src/haidc/arms/backbone.py` (`resolve_device`, `train_model`, `predict_spiral_proba`,
+  `run`); `configs/backbone.yaml`; `notebooks/m2_colab.ipynb`; `tests/arms/test_backbone_device.py`.
+- Status: active (M2 still partial — full-train sanity gate #2 pending the Colab run).
+
 ## TEMPLATE — copy below for the next entry
 ## 2026-MM-DD — <title>
 - Context:

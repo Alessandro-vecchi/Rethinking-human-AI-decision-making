@@ -19,6 +19,9 @@ train:
   batch_size: 128                       # Okati cell 10
   lr: 0.001                             # Okati uses Adam default lr (no lr arg in cell 10)
   weight_decay: 0.0
+  device: auto                          # 'auto' -> cuda if available else cpu (Colab GPU vs this CPU box)
+  channels_last: true                   # GPU conv memory layout; no-op on CPU. FP32 deterministic
+                                        # (no AMP/TF32) — DECISIONS 2026-06-27.
 
 # Bootstrap CI for AI-alone accuracy (REPRODUCIBILITY.md). Inline here until the shared eval
 # module exists (M6 to absorb; M2-PLAN §2).
