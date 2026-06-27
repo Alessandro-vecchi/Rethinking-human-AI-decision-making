@@ -12,15 +12,16 @@ label_table_path: data/label_table.parquet
 images_dir: data/raw/images_training_rev1   # Kaggle 'galaxy-zoo-the-galaxy-challenge' train images
                                             # (Okati fn 9); git-ignored, ~3 GB, must be downloaded.
 
-# Okati-faithful train recipe for the AI-alone "full" baseline (train.ipynb cell 41 `train_full`;
-# DECISIONS 2026-06-27). resnet50 scratch init + Linear(2048,2)+LogSoftmax head + NLLLoss are fixed
-# in code; these are the tunable knobs. (Switched off cell 10's *triage* m-net recipe, lr=1e-3/50ep,
-# after the first GPU run hit 0.769 < the 0.83 anchor — cell 41 is the standalone AI-alone classifier.)
+# Final dispositive backbone run (DECISIONS 2026-06-27): keep Run A's faithful core (lr=1e-3, Okati
+# train.ipynb cell 10) — the BETTER of the two runs (A 0.7694 vs the cell-41 "faithful" B 0.7478) —
+# and ONLY lengthen training (50 -> 120 epochs) to disambiguate under-training from a label/consensus
+# ceiling off the per-epoch train-acc curve. resnet50 scratch init + Linear(2048,2)+LogSoftmax +
+# NLLLoss are fixed in code. The run records train/val curves and exports the best-VAL checkpoint.
+# OFF without approval: cosine schedule, augmentation, pretrained init, data-pool expansion.
 train:
-  epochs: 30                            # Okati cell 41 train_full num_epochs
-  batch_size: 128                       # Okati cell 41
-  lr: 0.0045                            # Okati cell 41 train_full Adam lr (NLLLoss mean-reduction here;
-                                        # cell 41 uses reduction='none'+.sum() but Adam is ~scale-invariant)
+  epochs: 120                           # Run A core (Okati cell 10) lengthened to test convergence
+  batch_size: 128                       # Okati cell 10/41
+  lr: 0.001                             # Okati cell 10 Adam default lr (Run A; the better of A/B)
   weight_decay: 0.0
   device: auto                          # 'auto' -> cuda if available else cpu (Colab GPU vs this CPU box)
   channels_last: true                   # GPU conv memory layout; no-op on CPU. FP32 deterministic

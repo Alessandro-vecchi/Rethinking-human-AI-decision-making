@@ -62,14 +62,62 @@ def build_model():
     return model
 
 
+def select_best_epoch(val_acc_curve) -> int:
+    """Index of the best validation accuracy (earliest on ties) — the checkpoint to export.
+
+    Earliest-on-ties (np.argmax semantics) prefers the cheaper, earlier-converged checkpoint and
+    keeps selection deterministic across same-seed runs.
+    """
+    return int(np.argmax(np.asarray(val_acc_curve, dtype=float)))
+
+
+def _eval_loss_acc(model, X, y, *, batch_size, channels_last, threshold=0.5):
+    """Mean NLLLoss and AI-alone accuracy of `model` on (X, y) — eval mode, no grad, one pass.
+
+    Device-agnostic (follows the model's own device, like `predict_spiral_proba`). Used to record
+    the per-epoch train/val curves without a second forward pass per metric.
+    """
+    import torch
+
+    model = model.eval()
+    device = next(model.parameters()).device
+    use_cuda = device.type == "cuda"
+    X = torch.as_tensor(np.asarray(X), dtype=torch.float32)
+    y = torch.as_tensor(np.asarray(y), dtype=torch.long)
+    if use_cuda:
+        X = X.pin_memory()
+    loss_func = torch.nn.NLLLoss(reduction="sum")
+    total_loss, correct, n = 0.0, 0, int(X.shape[0])
+    with torch.no_grad():
+        for b in range(0, n, batch_size):
+            xb = X[b : b + batch_size].to(device, non_blocking=use_cuda)
+            yb = y[b : b + batch_size].to(device, non_blocking=use_cuda)
+            if use_cuda and channels_last:
+                xb = xb.to(memory_format=torch.channels_last)
+            logp = model(xb)
+            total_loss += float(loss_func(logp, yb))
+            pred = (torch.exp(logp)[:, SPIRAL_CLASS] >= threshold).long()
+            correct += int((pred == yb).sum())
+    denom = max(1, n)
+    return total_loss / denom, correct / denom
+
+
 def train_model(
     model, X, y, *, epochs, batch_size, lr, weight_decay=0.0,
     device=None, channels_last=False, return_losses=False,
+    X_val=None, y_val=None, select_best_val=False, return_history=False, threshold=0.5,
 ):
-    """Train with NLLLoss + Adam on (X, y). Returns the model, or per-epoch mean losses if asked.
+    """Train with NLLLoss + Adam on (X, y). Returns the model, per-epoch losses, or a history dict.
 
     X: float array/tensor (N, 3, 224, 224); y: int array/tensor (N,) in {0, 1}. Okati uses Adam
     with its default lr; `lr`/`epochs`/`batch_size` are config-driven (CODING.md "config over constants").
+
+    Validation tracking (DECISIONS 2026-06-27, final dispositive run): when `X_val`/`y_val` are given
+    (or `return_history`/`select_best_val` set), per-epoch train and val accuracy + loss curves are
+    recorded, and the best-VAL-accuracy weights are snapshotted. `select_best_val=True` loads those
+    weights back before returning, so the exported checkpoint is the best-VAL one, not the last epoch.
+    Return precedence: `return_history` -> a history dict {train_loss, train_acc, val_loss, val_acc,
+    best_epoch (1-indexed)}; else `return_losses` -> the per-epoch train-loss list; else the model.
 
     GPU path (FP32, deterministic-faithful — DECISIONS 2026-06-27): on CUDA the host tensor is
     pinned and batches are moved with `non_blocking=True`; `channels_last` lays conv activations out
@@ -79,6 +127,8 @@ def train_model(
     `warn_only=True` (documented best-effort GPU determinism). The CPU path is numerically
     unchanged from M2's original (defaults resolve to cpu, no pinning, no warn_only relaxation).
     """
+    import copy
+
     import torch
 
     device = resolve_device(device)
@@ -86,25 +136,30 @@ def train_model(
     if use_cuda:
         # ResNet-50 backward hits nondeterministic CUDA ops; warn instead of raising (DECISIONS).
         torch.use_deterministic_algorithms(True, warn_only=True)
-    model = model.to(device).train()
+    model = model.to(device)
     if use_cuda and channels_last:
         model = model.to(memory_format=torch.channels_last)
-    X = torch.as_tensor(np.asarray(X), dtype=torch.float32)
-    y = torch.as_tensor(np.asarray(y), dtype=torch.long)
+    X_t = torch.as_tensor(np.asarray(X), dtype=torch.float32)
+    y_t = torch.as_tensor(np.asarray(y), dtype=torch.long)
     if use_cuda:
-        X = X.pin_memory()  # page-locked host memory -> overlap H2D copy with compute
+        X_t = X_t.pin_memory()  # page-locked host memory -> overlap H2D copy with compute
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     loss_func = torch.nn.NLLLoss()
-    n = X.shape[0]
+    n = X_t.shape[0]
     n_batches = max(1, n // batch_size)
-    epoch_losses = []
-    for _ in range(epochs):
+
+    track = return_history or select_best_val or (X_val is not None)
+    train_loss_curve, train_acc_curve, val_loss_curve, val_acc_curve = [], [], [], []
+    best_state, best_epoch, best_val = None, 0, -1.0
+
+    for epoch in range(epochs):
+        model.train()
         perm = torch.randperm(n)
         batch_losses = []
         for b in range(n_batches):
             idx = perm[b * batch_size : (b + 1) * batch_size]
-            xb = X[idx].to(device, non_blocking=use_cuda)
-            yb = y[idx].to(device, non_blocking=use_cuda)
+            xb = X_t[idx].to(device, non_blocking=use_cuda)
+            yb = y_t[idx].to(device, non_blocking=use_cuda)
             if use_cuda and channels_last:
                 xb = xb.to(memory_format=torch.channels_last)
             opt.zero_grad()
@@ -112,8 +167,40 @@ def train_model(
             loss.backward()
             opt.step()
             batch_losses.append(float(loss.detach()))
-        epoch_losses.append(float(np.mean(batch_losses)))
-    return epoch_losses if return_losses else model
+        train_loss_curve.append(float(np.mean(batch_losses)))
+
+        if track:
+            _, tr_acc = _eval_loss_acc(
+                model, X, y, batch_size=batch_size, channels_last=channels_last, threshold=threshold
+            )
+            train_acc_curve.append(tr_acc)
+            if X_val is not None:
+                v_loss, v_acc = _eval_loss_acc(
+                    model, X_val, y_val, batch_size=batch_size,
+                    channels_last=channels_last, threshold=threshold,
+                )
+                val_loss_curve.append(v_loss)
+                val_acc_curve.append(v_acc)
+                if v_acc > best_val:  # strict '>' -> earliest argmax, matches select_best_epoch
+                    best_val, best_epoch = v_acc, epoch
+                    best_state = copy.deepcopy(
+                        {k: v.detach().cpu() for k, v in model.state_dict().items()}
+                    )
+
+    if select_best_val and best_state is not None:
+        model.load_state_dict(best_state)  # export the best-VAL checkpoint, not the last epoch
+
+    if return_history:
+        return {
+            "train_loss": train_loss_curve,
+            "train_acc": train_acc_curve,
+            "val_loss": val_loss_curve,
+            "val_acc": val_acc_curve,
+            "best_epoch": (best_epoch + 1) if val_acc_curve else None,
+        }
+    if return_losses:
+        return train_loss_curve
+    return model
 
 
 def predict_spiral_proba(model, X, *, batch_size=128, channels_last=False):
@@ -232,9 +319,11 @@ def _git_sha() -> str:
 
 
 def _vendored_sha(path="third_party/okati2021") -> str:
+    # third_party/** is git-ignored and absent in the Colab clone, so `git -C` would print a noisy
+    # "fatal: cannot change to ..." to stderr before we catch it; silence stderr (DECISIONS 2026-06-27).
     try:
         return subprocess.check_output(
-            ["git", "-C", path, "rev-parse", "HEAD"], text=True
+            ["git", "-C", path, "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
         ).strip()
     except Exception:
         return "unknown"
@@ -255,28 +344,37 @@ def run(cfg: dict) -> dict:
 
     split = load_split(cfg["manifest_path"])
     labels = load_labels(cfg["label_table_path"])
-    missing = [g for g in split["train"] + split["test"] if g not in labels]
+    missing = [g for g in split["train"] + split["val"] + split["test"] if g not in labels]
     if missing:
         raise RuntimeError(f"{len(missing)} split GalaxyIDs lack a y_debiased label (join confound)")
 
     tr = cfg["train"]
+    thr = float(cfg["threshold_default"])
     device = resolve_device(tr.get("device", "auto"))
     channels_last = bool(tr.get("channels_last", True))
     X_train = load_images_for_ids(split["train"], cfg["images_dir"])
     y_train = np.array([labels[g] for g in split["train"]], dtype="int64")
+    X_val = load_images_for_ids(split["val"], cfg["images_dir"])
+    y_val = np.array([labels[g] for g in split["val"]], dtype="int64")
 
     model = build_model()
-    # return_losses gives the per-epoch loss curve; the model is trained in place (nn.Module.to
-    # returns self), so we reuse `model` for prediction below.
-    train_loss_curve = train_model(
+    # Final dispositive run (DECISIONS 2026-06-27): track per-epoch train/val curves and export the
+    # best-VAL-accuracy checkpoint (not the last epoch). The model is trained in place and left
+    # holding the best-VAL weights, so we reuse it for the train/test scoring below.
+    history = train_model(
         model, X_train, y_train,
         epochs=int(tr["epochs"]), batch_size=int(tr["batch_size"]),
         lr=float(tr["lr"]), weight_decay=float(tr.get("weight_decay", 0.0)),
-        device=device, channels_last=channels_last, return_losses=True,
+        device=device, channels_last=channels_last,
+        X_val=X_val, y_val=y_val, select_best_val=True, return_history=True, threshold=thr,
     )
+    train_loss_curve = history["train_loss"]
+    best_epoch = history["best_epoch"]
+    val_accuracy = history["val_acc"][best_epoch - 1] if best_epoch else None
 
-    # Convergence diagnostic (DECISIONS 2026-06-27): a high train acc vs ~0.77 test confirms a
-    # data-limited generalization gap; a high final train loss would instead mean undertraining.
+    # Convergence diagnostic (DECISIONS 2026-06-27): read the train-acc curve — a climb to ~0.93+
+    # means it was under-trained; a plateau ~0.80-0.85 means a label/consensus ceiling, not an
+    # optimization bug. `train_scores` reflect the exported best-VAL checkpoint.
     train_scores = predict_spiral_proba(
         model, X_train, batch_size=int(tr["batch_size"]), channels_last=channels_last
     )
@@ -291,7 +389,6 @@ def run(cfg: dict) -> dict:
     Path(cfg["export_scores_path"]).parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(cfg["export_scores_path"], index=False)
 
-    thr = float(cfg["threshold_default"])
     acc = ai_alone_accuracy(scores, y_test, threshold=thr)
     train_acc = ai_alone_accuracy(train_scores, y_train, threshold=thr)
     bs = cfg["bootstrap"]
@@ -315,6 +412,7 @@ def run(cfg: dict) -> dict:
         "torch_version": torch.__version__,
         "cuda_version": torch.version.cuda,
         "n_train": len(split["train"]),
+        "n_val": len(split["val"]),
         "n_test": len(split["test"]),
         "threshold": thr,
         "ai_alone_accuracy": acc,
@@ -322,8 +420,13 @@ def run(cfg: dict) -> dict:
         "ci_level": float(bs["ci"]),
         "n_boot": int(bs["n_boot"]),
         "train_accuracy": train_acc,
+        "val_accuracy": val_accuracy,
+        "best_epoch": best_epoch,
         "final_train_loss": float(train_loss_curve[-1]) if train_loss_curve else None,
         "train_loss_curve": [float(v) for v in train_loss_curve],
+        "train_acc_curve": [float(v) for v in history["train_acc"]],
+        "val_acc_curve": [float(v) for v in history["val_acc"]],
+        "val_loss_curve": [float(v) for v in history["val_loss"]],
         "artifact_path": cfg["artifact_path"],
         "export_scores_path": cfg["export_scores_path"],
         "generated_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -340,12 +443,16 @@ def main() -> int:
     m = run(cfg)
     lo, hi = m["ai_alone_accuracy_ci"]
     gap = m["train_accuracy"] - m["ai_alone_accuracy"]
+    tac = m["train_acc_curve"]
     print(
-        f"backbone: trained on {m['n_train']} imgs, scored {m['n_test']} test imgs\n"
+        f"backbone: trained on {m['n_train']} imgs, val {m['n_val']}, scored {m['n_test']} test imgs\n"
         f"AI-alone test accuracy @ thr {m['threshold']} = {m['ai_alone_accuracy']:.4f} "
         f"(95% CI [{lo:.4f}, {hi:.4f}])\n"
+        f"best-VAL epoch = {m['best_epoch']}/{len(tac)} | val acc = {m['val_accuracy']:.4f}\n"
         f"train accuracy = {m['train_accuracy']:.4f} | final train loss = {m['final_train_loss']:.4f} "
         f"| train-test gap = {gap:+.4f}\n"
+        f"train-acc curve: first={tac[0]:.3f} max={max(tac):.3f} last={tac[-1]:.3f}  "
+        f"(verdict: climb to ~0.93+ => under-trained; plateau ~0.80-0.85 => label ceiling)\n"
         f"scores -> {m['export_scores_path']}   artifact -> {m['artifact_path']}"
     )
     return 0
