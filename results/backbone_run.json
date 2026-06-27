@@ -1,0 +1,46 @@
+{
+  "stage": "backbone",
+  "config": {
+    "seed": 0,
+    "features": "fresh",
+    "threshold_default": 0.5,
+    "manifest_path": "data/split_manifest.json",
+    "label_table_path": "data/label_table.parquet",
+    "images_dir": "data/raw/images_training_rev1",
+    "train": {
+      "epochs": 50,
+      "batch_size": 128,
+      "lr": 0.001,
+      "weight_decay": 0.0,
+      "device": "auto",
+      "channels_last": true
+    },
+    "bootstrap": {
+      "n_boot": 1000,
+      "ci": 0.95
+    },
+    "artifact_path": "results/backbone.pt",
+    "run_manifest_path": "results/backbone_run.json",
+    "export_scores_path": "results/backbone_scores.parquet"
+  },
+  "seed": 0,
+  "git_sha": "ac6bc4b5ecb17175602b11d8df258c28744c5366",
+  "vendored_okati_sha": "unknown",
+  "device": "cuda",
+  "channels_last": true,
+  "torch_version": "2.11.0+cu128",
+  "cuda_version": "12.8",
+  "n_train": 3234,
+  "n_test": 694,
+  "threshold": 0.5,
+  "ai_alone_accuracy": 0.7694524495677233,
+  "ai_alone_accuracy_ci": [
+    0.7377521613832853,
+    0.7982708933717579
+  ],
+  "ci_level": 0.95,
+  "n_boot": 1000,
+  "artifact_path": "results/backbone.pt",
+  "export_scores_path": "results/backbone_scores.parquet",
+  "generated_at_utc": "2026-06-27T02:01:35+00:00"
+}

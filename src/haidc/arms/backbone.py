@@ -266,11 +266,19 @@ def run(cfg: dict) -> dict:
     y_train = np.array([labels[g] for g in split["train"]], dtype="int64")
 
     model = build_model()
-    train_model(
+    # return_losses gives the per-epoch loss curve; the model is trained in place (nn.Module.to
+    # returns self), so we reuse `model` for prediction below.
+    train_loss_curve = train_model(
         model, X_train, y_train,
         epochs=int(tr["epochs"]), batch_size=int(tr["batch_size"]),
         lr=float(tr["lr"]), weight_decay=float(tr.get("weight_decay", 0.0)),
-        device=device, channels_last=channels_last,
+        device=device, channels_last=channels_last, return_losses=True,
+    )
+
+    # Convergence diagnostic (DECISIONS 2026-06-27): a high train acc vs ~0.77 test confirms a
+    # data-limited generalization gap; a high final train loss would instead mean undertraining.
+    train_scores = predict_spiral_proba(
+        model, X_train, batch_size=int(tr["batch_size"]), channels_last=channels_last
     )
 
     X_test = load_images_for_ids(split["test"], cfg["images_dir"])
@@ -285,6 +293,7 @@ def run(cfg: dict) -> dict:
 
     thr = float(cfg["threshold_default"])
     acc = ai_alone_accuracy(scores, y_test, threshold=thr)
+    train_acc = ai_alone_accuracy(train_scores, y_train, threshold=thr)
     bs = cfg["bootstrap"]
     lo, hi = bootstrap_ci(
         scores, y_test, threshold=thr,
@@ -312,6 +321,9 @@ def run(cfg: dict) -> dict:
         "ai_alone_accuracy_ci": [lo, hi],
         "ci_level": float(bs["ci"]),
         "n_boot": int(bs["n_boot"]),
+        "train_accuracy": train_acc,
+        "final_train_loss": float(train_loss_curve[-1]) if train_loss_curve else None,
+        "train_loss_curve": [float(v) for v in train_loss_curve],
         "artifact_path": cfg["artifact_path"],
         "export_scores_path": cfg["export_scores_path"],
         "generated_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -327,10 +339,13 @@ def main() -> int:
     cfg = yaml.safe_load(Path(args.config).read_text())
     m = run(cfg)
     lo, hi = m["ai_alone_accuracy_ci"]
+    gap = m["train_accuracy"] - m["ai_alone_accuracy"]
     print(
         f"backbone: trained on {m['n_train']} imgs, scored {m['n_test']} test imgs\n"
         f"AI-alone test accuracy @ thr {m['threshold']} = {m['ai_alone_accuracy']:.4f} "
         f"(95% CI [{lo:.4f}, {hi:.4f}])\n"
+        f"train accuracy = {m['train_accuracy']:.4f} | final train loss = {m['final_train_loss']:.4f} "
+        f"| train-test gap = {gap:+.4f}\n"
         f"scores -> {m['export_scores_path']}   artifact -> {m['artifact_path']}"
     )
     return 0

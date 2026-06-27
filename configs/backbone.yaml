@@ -12,12 +12,15 @@ label_table_path: data/label_table.parquet
 images_dir: data/raw/images_training_rev1   # Kaggle 'galaxy-zoo-the-galaxy-challenge' train images
                                             # (Okati fn 9); git-ignored, ~3 GB, must be downloaded.
 
-# Okati-faithful train recipe (train.ipynb cell 10; HANDOFF §3a). resnet50 scratch init +
-# Linear(2048,2)+LogSoftmax head + NLLLoss are fixed in code; these are the tunable knobs.
+# Okati-faithful train recipe for the AI-alone "full" baseline (train.ipynb cell 41 `train_full`;
+# DECISIONS 2026-06-27). resnet50 scratch init + Linear(2048,2)+LogSoftmax head + NLLLoss are fixed
+# in code; these are the tunable knobs. (Switched off cell 10's *triage* m-net recipe, lr=1e-3/50ep,
+# after the first GPU run hit 0.769 < the 0.83 anchor — cell 41 is the standalone AI-alone classifier.)
 train:
-  epochs: 50                            # Okati cell 10 num_epochs
-  batch_size: 128                       # Okati cell 10
-  lr: 0.001                             # Okati uses Adam default lr (no lr arg in cell 10)
+  epochs: 30                            # Okati cell 41 train_full num_epochs
+  batch_size: 128                       # Okati cell 41
+  lr: 0.0045                            # Okati cell 41 train_full Adam lr (NLLLoss mean-reduction here;
+                                        # cell 41 uses reduction='none'+.sum() but Adam is ~scale-invariant)
   weight_decay: 0.0
   device: auto                          # 'auto' -> cuda if available else cpu (Colab GPU vs this CPU box)
   channels_last: true                   # GPU conv memory layout; no-op on CPU. FP32 deterministic

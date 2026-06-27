@@ -161,6 +161,42 @@ here in the same change. Format:
   `run`); `configs/backbone.yaml`; `notebooks/m2_colab.ipynb`; `tests/arms/test_backbone_device.py`.
 - Status: active (M2 still partial — full-train sanity gate #2 pending the Colab run).
 
+## 2026-06-27 — M2 first GPU run analysis: 0.769 < 0.83 anchor → corrective re-run (cell-41 recipe)
+- Context: the first full GPU run finished on Colab (CUDA, torch 2.11.0+cu128, repo `git_sha
+  ac6bc4b`) and produced `results/backbone_scores.parquet` + `results/backbone_run.json` (user had
+  placed them in `data/`; moved to `results/` — config's declared output dir; `data/` is inputs only).
+- Result: **AI-alone TEST accuracy = 0.7694, 95% bootstrap CI [0.7378, 0.7983]** (n_boot=1000),
+  threshold 0.5, n_train=3234, n_test=694. Test majority-class baseline = 0.732 → the model beats
+  baseline by only ~3.7 pts and sits ~6 pts below Okati's 0.83 anchor (Fig 4(b), b=0). **Sanity
+  gate #2 NOT met.**
+- Analysis: scores contract valid (694 rows, order matches frozen test split, ∈[0,1], unique). Not
+  collapsed — predicted spiral rate 0.277 ≈ true 0.268 — **but 83% of scores are >0.9 or <0.1
+  (confident-but-wrong)**, the signature of a generalization / data-limited gap rather than
+  undertraining. **Preprocessing verified faithful**: Okati `Galaxy-zoo/prepare_data.py:41-46` uses
+  the exact `Resize(256)+CenterCrop(224)+ToTensor+Normalize(ImageNet)` our `load_images_for_ids`
+  uses. **Labels verified faithful**: Okati `Y=argmax(Class1.1, Class1.2)` debiased fractions =
+  our `y_debiased`. So neither preprocessing nor labels explain the gap.
+- Two real differences identified: (a) **recipe** — our backbone followed `train.ipynb` cell 10's
+  *triage* m-net (Adam lr=1e-3, 50 epochs), but Okati's standalone AI-alone classifier is cell 41
+  `train_full` (**Adam lr=0.0045, 30 epochs**); (b) **data** — Okati trains the AI-alone model on
+  6,000 imgs (60% of its 10k) vs our crosswalk-constrained 3,234 (70% of N=4,621). The smaller split
+  is mandated by M1 (the Willett crosswalk universe needed for the multi-rater urns).
+- Decision (orchestrator-approved): **one corrective re-run first.** Align the shared backbone to
+  Okati's `train_full` AI-alone recipe — `configs/backbone.yaml` `train.lr 0.001→0.0045`,
+  `train.epochs 50→30`, citing cell 41 (supersedes the cell-10 recipe for the backbone). NLLLoss
+  stays mean-reduction: cell 41 uses `reduction='none'+.sum()`, but under **Adam** that is
+  ~scale-invariant, so `lr` is the operative knob. This is a fidelity correction, **not** tuning to
+  a number (CLAUDE.md: don't silently tune past the anchor).
+- Diagnostics added (`backbone.py run()`): the run manifest now records `train_accuracy`,
+  `final_train_loss`, and the per-epoch `train_loss_curve`. Interpretation for the re-run: a large
+  positive train−test gap with low final train loss ⇒ data-limited (more epochs won't help) ⇒ switch
+  to "accept 0.77 + document the data-regime deviation"; high final train loss ⇒ undertraining.
+- Provenance note: the run manifest shows `vendored_okati_sha: "unknown"` — a Colab-clone limitation
+  (third_party is git-ignored and not a nested repo there); the real Okati SHA `43ec215` is pinned in
+  the 2026-06-26 entry.
+- Status: active (M2 still partial — sanity gate #2 pending the corrective Colab re-run; reassess
+  accept-vs-iterate from the new test acc + train−test gap).
+
 ## TEMPLATE — copy below for the next entry
 ## 2026-MM-DD — <title>
 - Context:
