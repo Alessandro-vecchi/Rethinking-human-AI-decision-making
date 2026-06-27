@@ -267,6 +267,67 @@ here in the same change. Format:
   Backbone tests not run locally (CPU box; validated on Colab GPU per established convention).
 - Status: active. M3 done; HCT per-instance table frozen as the M6 input contract.
 
+## 2026-06-27 — M4 L2D-Okati arm: Option B (frozen classifier), oracle frontier + learned rejector (staged)
+- Context: M4 adds the L2D-Okati arm. Okati's upstream method CO-TRAINS the classifier with its
+  triage net; under CLAUDE.md invariants #1/#2 every arm must consume the SAME classifier scores +
+  frozen split, so co-training would make a different classifier per arm and confound the head-to-head.
+- Decision (Option B, orchestrator-approved): FREEZE the shared M2 backbone as the classifier; learn
+  ONLY Okati's triage/deferral policy on top. This is the documented deviation from Okati's
+  co-training — the shared frozen classifier removes the confound rather than hiding it (§7 invariant).
+  No classifier is retrained.
+- Decision (mechanism, GROUND_TRUTH §3 Thm. 3): defer when the per-instance gap
+  `machine_loss − human_loss > 0`, swept by budget b. `machine_loss = 1{ai_label≠y_debiased}` with
+  `ai_label = 1[score≥0.5]` (fixed backbone anchor θ; b — not θ — is Okati's knob). Human term
+  (invariant §3, same P(h|x) as HCT/single-human): the deferral DECISION uses the deterministic
+  EXPECTED human 0/1 loss = minority share of the urn (matches Okati's expected `hloss`); the
+  REALIZED decision when deferred draws ONE human per (instance, seed) via the shared M1 sampler
+  (= HCT's h1 at matching id-order/seed). `find_machine_samples` is transcribed from Okati
+  train.ipynb Cell-8 (SHA 43ec215) with TWO documented boundary fixes: (a) b=0 → defer NONE
+  (upstream's `argsorted[:-num_outsource]` is `[:-0]==[:0]`=empty at b=0, which would defer ALL);
+  (b) never defer a gap≤0 instance even at large budget (upstream while-loop would slice off one).
+  A test asserts the oracle never defers an AI-correct instance.
+- Decision (staged realization, two distinct policies — `policy` column so M6 can NEVER plot the
+  oracle as Okati's deployed method):
+  1. **oracle** (ships now, no Colab): `find_machine_samples` on the frozen TEST losses. The OPTIMAL
+     fixed-classifier deferral — an UPPER BOUND that decides deferral using test labels, so NOT
+     deployable. It is also the envelope the learned policy must sit at/below.
+  2. **learned** (deployable head-to-head number; code landed, real curve pending the Colab export):
+     an MLP rejector (Okati's gnet head: Linear→LogSoftmax + NLLLoss) trained on the FROZEN backbone's
+     2048-d penultimate EMBEDDINGS to predict the train oracle-defer set, applied LABEL-FREE at test
+     (defer top floor(b·N) by P(defer)). Rejector input = embeddings (not scalar score, which would
+     collapse to Okati's separate confidence-triage baseline). Requires
+     `results/backbone_embeddings.parquet` from a one-time Colab GPU pass over `backbone.pt`
+     (`backbone.py --export-embeddings`, new Cell 10 in `notebooks/m2_colab.ipynb`) — shared
+     critical-path infra also consumed by M5 Mozannar; skipped (with a loud note) when absent.
+- Cost semantics (flagged for M6): human_queries = 1 iff defer else 0 → expected cost == deferral
+  fraction ∈ [0,1]. This is a DIFFERENT regime from HCT's [1,2]; M6 must state the asymmetry.
+- Reproduced baseline (M4 step 1): b=0 (no deferral) TEST accuracy @θ=0.5 = **0.8285** == backbone
+  `ai_alone_accuracy` 0.8285 (≈ Okati's ~0.83, Fig 4(b) b=0). No classifier retrained to get it.
+- Realized ORACLE frontier (mean over rater seeds 0–4; `results/l2d_okati_operating_points.csv`):
+  b=0.0 → acc 0.8285, cost 0.000 ; b=0.1 → 0.8821, 0.099 ; b≥0.2 → 0.8919, 0.1715 (flat).
+  **Finding — the oracle deferral fraction SATURATES at 0.1715 = exactly the AI error rate**, because
+  Thm-3 defers only gap>0 instances and gap>0 ⟺ AI wrong; budgets ≥~0.2 collapse to one operating
+  point. The oracle beats AI-alone (0.829→0.892) — as an upper bound, by construction. The smooth,
+  budget-populated curve is the LEARNED policy's job (it can defer AI-correct instances, so it
+  extends to b=0.8 and sits below this envelope) and lands after the embedding export.
+- Tests (TESTING.md, written first → green): `tests/arms/test_l2d_okati.py` (21 — find_machine_samples
+  Thm-3 + boundary fixes, gap building blocks, b=0==AI-alone, cost==deferral∈[0,1], monotonicity,
+  oracle-defers-only-errors, seed-independence of the defer set, determinism, row-reorder robustness,
+  frozen-split hash + shared-input guards, learned-rejector determinism + separable-signal recovery)
+  and `tests/arms/test_embeddings_contract.py` (4 — export frame contract + validator). Whole suite
+  green; `ruff check src tests` clean (incidentally removed a pre-existing unused `pytest` import in
+  `tests/arms/test_backbone_val_select.py` that was blocking the repo lint gate).
+- Evidence: `src/haidc/arms/l2d_okati.py`; `src/haidc/arms/backbone.py` (`embed_and_score`,
+  `build_embeddings_frame`, `export_embeddings`, `--export-embeddings`); `src/haidc/arms/run_all.py`;
+  `configs/arms.yaml`, `configs/backbone.yaml` (`export_embeddings_path`); `notebooks/m2_colab.ipynb`
+  Cell 10; Okati train.ipynb Cell-8/Cell-18 (SHA 43ec215); artifacts
+  `results/l2d_okati_predictions.parquet` (31,230 oracle rows = 694×9×5) +
+  `results/l2d_okati_operating_points.csv`.
+- Status: active. M4 oracle frontier DONE (reproduced baseline + smooth-where-meaningful curve +
+  per-instance table exported, invariants held). LEARNED policy code + tests landed; its real curve
+  is gated on the Colab embedding export (shared with M5). Backbone/embedding GPU paths not run
+  locally (CPU box — established convention).
+
 ## TEMPLATE — copy below for the next entry
 ## 2026-MM-DD — <title>
 - Context:

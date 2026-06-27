@@ -12,7 +12,6 @@ import math
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from haidc.arms import backbone as bb
 from haidc.arms.backbone import (

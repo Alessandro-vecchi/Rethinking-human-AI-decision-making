@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from haidc.arms import hct
+from haidc.arms import hct, l2d_okati
 
 
 def main() -> int:
@@ -36,8 +36,15 @@ def main() -> int:
     print(f"[HCT] {summary['n_rows']} rows -> {summary['predictions_path']} "
           f"(acc spread {summary['accuracy_spread']:.4f}, cost spread {summary['cost_spread']:.4f})")
 
-    # --- L2D-Okati (M4), L2D-Mozannar (M5), baselines: not yet implemented --
-    print("[L2D-Okati]    pending (M4)")
+    # --- L2D-Okati (M4) -----------------------------------------------------
+    okati_cfg = l2d_okati._wire_defaults(arms["l2d_okati"])
+    osum = l2d_okati.run(okati_cfg, eval_cfg)
+    learned = "learned+oracle" if osum["learned_available"] else "oracle only (embeddings pending)"
+    print(f"[L2D-Okati] {osum['n_rows']} rows -> {osum['predictions_path']} ({learned}); "
+          f"AI-alone {osum['ai_alone_b0']:.4f}, best oracle {osum['best_oracle_accuracy']:.4f}, "
+          f"max deferral {osum['max_deferral_fraction']:.4f}")
+
+    # --- L2D-Mozannar (M5), baselines: not yet implemented ------------------
     print("[L2D-Mozannar] pending (M5)")
     print("[baselines]    pending (M6)")
     return 0

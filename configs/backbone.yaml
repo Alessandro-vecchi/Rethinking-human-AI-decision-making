@@ -37,3 +37,7 @@ bootstrap:
 artifact_path: results/backbone.pt                  # git-ignored model weights
 run_manifest_path: results/backbone_run.json        # config + seed + SHAs + metrics
 export_scores_path: results/backbone_scores.parquet # one row/test GalaxyID, P(spiral|x) in [0,1]
+# Stage-B infra (M4 learned rejector + M5 Mozannar): `python -m haidc.arms.backbone --export-embeddings`
+# reads the FROZEN backbone.pt (no retrain) and writes 2048-d penultimate features + score for
+# train/val/test. Colab GPU pass (needs images_dir + backbone.pt); git-ignored, ~? MB.
+export_embeddings_path: results/backbone_embeddings.parquet

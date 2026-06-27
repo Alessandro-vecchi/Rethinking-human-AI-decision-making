@@ -285,6 +285,102 @@ def export_scores(galaxy_ids, scores) -> pd.DataFrame:
     return pd.DataFrame({"GalaxyID": np.asarray(galaxy_ids, dtype=np.int64), "score": scores})
 
 
+# --------------------------------------------------------------------------- embeddings export (Stage B infra)
+def embed_and_score(model, X, *, batch_size=128, channels_last=False):
+    """Penultimate 2048-d features (avgpool output) AND P(spiral|x) in one forward pass.
+
+    The 2048-d vector is the input to the `fc` head — captured via a forward hook on `avgpool`,
+    flattened. Device-agnostic, same batching as `predict_spiral_proba`. Returns (emb (N,2048),
+    score (N,)) as numpy float64. This is the deferral-rejector input for the L2D arms (Option B):
+    the frozen classifier's representation, not raw images (Okati train.ipynb gnet adapted).
+    """
+    import torch
+
+    model = model.eval()
+    device = next(model.parameters()).device
+    use_cuda = device.type == "cuda"
+    captured = {}
+    handle = model.avgpool.register_forward_hook(
+        lambda _m, _inp, out: captured.__setitem__("z", torch.flatten(out, 1).detach())
+    )
+    X = torch.as_tensor(np.asarray(X), dtype=torch.float32)
+    if use_cuda:
+        X = X.pin_memory()
+    embs, scores = [], []
+    try:
+        with torch.no_grad():
+            for b in range(0, X.shape[0], batch_size):
+                xb = X[b : b + batch_size].to(device, non_blocking=use_cuda)
+                if use_cuda and channels_last:
+                    xb = xb.to(memory_format=torch.channels_last)
+                logp = model(xb)
+                embs.append(captured["z"].cpu().numpy())
+                scores.append(torch.exp(logp)[:, SPIRAL_CLASS].cpu().numpy())
+    finally:
+        handle.remove()
+    return np.concatenate(embs).astype(np.float64), np.concatenate(scores).astype(np.float64)
+
+
+def build_embeddings_frame(ids_by_split, emb_by_split, score_by_split) -> pd.DataFrame:
+    """Assemble the cross-arm embeddings contract consumed by L2D-Okati(learned) and M5 Mozannar.
+
+    One row per GalaxyID; splits stacked train -> val -> test, each in the given (manifest) id order.
+    Columns: GalaxyID, split, score, e0..e(D-1). Pure (no torch) so the contract is unit-testable.
+    """
+    frames = []
+    for split in ("train", "val", "test"):
+        ids = [int(g) for g in ids_by_split[split]]
+        emb = np.asarray(emb_by_split[split], dtype=np.float64)
+        sc = np.asarray(score_by_split[split], dtype=np.float64)
+        if not (len(ids) == emb.shape[0] == len(sc)):
+            raise ValueError(
+                f"{split}: ids/emb/score length mismatch {len(ids)}/{emb.shape[0]}/{len(sc)}"
+            )
+        cols = {"GalaxyID": np.asarray(ids, dtype=np.int64), "split": split, "score": sc}
+        for j in range(emb.shape[1]):
+            cols[f"e{j}"] = emb[:, j]
+        frames.append(pd.DataFrame(cols))
+    return pd.concat(frames, ignore_index=True)
+
+
+def export_embeddings(cfg: dict) -> dict:
+    """Load the FROZEN backbone.pt and export 2048-d features + score for all three splits.
+
+    Shared Stage-B infra (a Colab GPU pass; not run on the CPU box). Writes
+    `cfg['export_embeddings_path']` (default results/backbone_embeddings.parquet). The classifier is
+    NOT retrained — this only reads off the frozen checkpoint, preserving CLAUDE.md invariant #2.
+    """
+    import torch
+
+    seed_everything(int(cfg["seed"]))
+    split = load_split(cfg["manifest_path"])
+    tr = cfg["train"]
+    device = resolve_device(tr.get("device", "auto"))
+    channels_last = bool(tr.get("channels_last", True))
+
+    model = build_model()
+    model.load_state_dict(torch.load(cfg["artifact_path"], map_location="cpu"))
+    model.to(device)
+    if device.type == "cuda" and channels_last:
+        model = model.to(memory_format=torch.channels_last)
+
+    emb_by_split, score_by_split = {}, {}
+    for s in ("train", "val", "test"):
+        X = load_images_for_ids(split[s], cfg["images_dir"])
+        e, sc = embed_and_score(model, X, batch_size=int(tr["batch_size"]), channels_last=channels_last)
+        emb_by_split[s], score_by_split[s] = e, sc
+
+    frame = build_embeddings_frame(split, emb_by_split, score_by_split)
+    out = cfg.get("export_embeddings_path", "results/backbone_embeddings.parquet")
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    frame.to_parquet(out, index=False)
+    return {
+        "path": out, "n_rows": len(frame), "n_features": frame.shape[1] - 3,
+        "n_train": len(split["train"]), "n_val": len(split["val"]), "n_test": len(split["test"]),
+        "device": device.type,
+    }
+
+
 # --------------------------------------------------------------------------- metrics
 def ai_alone_accuracy(scores, y_true, *, threshold=0.5) -> float:
     """AI-alone accuracy: predict spiral when P(spiral) >= threshold, compare to y_true."""
@@ -438,8 +534,16 @@ def run(cfg: dict) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/backbone.yaml")
+    ap.add_argument("--export-embeddings", action="store_true",
+                    help="skip training; export 2048-d features + score from the frozen backbone.pt "
+                         "(Stage-B infra for the L2D arms; run on Colab GPU)")
     args = ap.parse_args()
     cfg = yaml.safe_load(Path(args.config).read_text())
+    if args.export_embeddings:
+        e = export_embeddings(cfg)
+        print(f"embeddings: {e['n_rows']} rows x {e['n_features']} feats "
+              f"(train {e['n_train']}, val {e['n_val']}, test {e['n_test']}) on {e['device']} -> {e['path']}")
+        return 0
     m = run(cfg)
     lo, hi = m["ai_alone_accuracy_ci"]
     gap = m["train_accuracy"] - m["ai_alone_accuracy"]

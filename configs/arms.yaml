@@ -2,6 +2,11 @@
 hct:
   ai_threshold_sweep: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]   # the ONLY HCT knob
 l2d_okati:
+  # Okati Theorem-3 triage over the FROZEN M2 backbone (Option B). b caps the deferral fraction;
+  # human_queries = 1 iff defer so expected cost == deferral fraction in [0,1] (≠ HCT's [1,2]).
+  # Two policies emitted: oracle (upper bound, peeks at test labels) + learned (deployable, needs
+  # results/backbone_embeddings.parquet from the Colab export — skipped if absent). Paths wired via
+  # l2d_okati._wire_defaults; override here only to deviate from the M1/M2 artifact locations.
   budget_b_sweep: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]       # deferral budget
 l2d_mozannar:
   defer_cost_sweep: [0.1, 0.2, 0.5, 1.0, 2.0, 5.0]                    # surrogate cost param
