@@ -225,6 +225,48 @@ here in the same change. Format:
   the AI threshold, so the operating points will be sparse where scores pile up near 0.
 - Status: resolved. M2 done; backbone interface frozen.
 
+## 2026-06-27 — M3 HCT arm: decision rule applied, threshold locus is coarse/clustered
+- Context: M3 implements the HCT arm — a DECISION RULE, not a trainable model (GROUND_TRUTH §2,
+  HANDOFF §8). Apply the rule over the M1 vote urns + binarized M2 backbone scores, sweep the AI
+  threshold θ (the only HCT knob), export the per-instance table M6 consumes.
+- Decisions:
+  1. **Shared metrics module created now** — `src/haidc/eval/metrics.py` (`accuracy`,
+     `expected_human_cost`), the single source every arm uses (invariant §4). Chosen over the M2
+     "inline + M6 absorbs" precedent because the metric definition is the cross-arm invariant most
+     likely to be silently violated; M6 extends this module with Pareto + bootstrap CIs.
+  2. **Humans drawn once per (instance, seed), reused across θ** — moving the AI threshold changes
+     only `ai_label`, never the human votes. Isolates the threshold effect, removes spurious
+     variance. Per-instance rows still keyed (GalaxyID, θ, seed). (User-confirmed.)
+  3. **Multi-seed band** over `eval.yaml rater_draw_seeds=[0..4]` (HCT is stochastic); band =
+     min/max across seeds. Bootstrap CIs remain M6's job. Determinism: one `default_rng(seed)` per
+     rater seed, drawing over TEST ids in the frozen split-manifest order.
+  4. **Sweep left UNCHANGED.** `configs/arms.yaml hct.ai_threshold_sweep=[0.1..0.9]` kept as-is.
+- Realized operating-point locus (mean over 5 seeds; full table `results/hct_operating_points.csv`):
+  θ=0.10 → acc 0.8133, cost 1.2277 ; θ=0.50 → acc 0.8104, cost 1.2023 ; θ=0.90 → acc 0.8014,
+  cost 1.1813. Across the sweep: accuracy ∈ [0.801, 0.813] (spread 0.012), expected cost ∈
+  [1.181, 1.228] (spread 0.046). Cost bound ∈ [1,2] holds for every θ, and the identity
+  cost = 1 + P(ai≠h1) is asserted in code and tests.
+- Finding — **the locus is COARSE and tightly CLUSTERED, but NOT degenerate** (monotone cost trend;
+  cost decreases as θ rises and the AI calls fewer galaxies spiral). Two causes, both expected:
+  (a) the M2 backbone scores saturate near {0,1} (median≈0, only ~8.8% of TEST scores in (0.1,0.9)),
+  so only ~61 of 694 instances flip label across θ∈[0.1,0.9]; (b) the crowd-consensus ceiling
+  (HANDOFF §9): h2 is drawn from the same P(h|x) that defines y, so HCT cannot beat consensus on
+  near-split urns; accuracy sits near the single-human ≈0.79–0.81 band. **No sweep change proposed:**
+  finer/lower θ would not materially widen the locus because the cause is score saturation +
+  consensus ceiling, not grid coarseness. Disclosed here for M6/report rather than silently altered.
+- Coarse-vs-smooth asymmetry (CLAUDE.md #4, restated for M6/report): HCT yields this coarse set of
+  9 (accuracy, expected-cost) markers with cost bounded in [1,2]; L2D yields a SMOOTH curve via its
+  deferral-cost parameter. M6 must plot HCT as markers (not a line) and state the asymmetry in the
+  caption. The tight clustering here strengthens the framing point: HCT is auditable/training-free
+  but offers little cost-axis navigation on a saturated backbone over a consensus label.
+- Note (not implemented; M6/baseline territory): single-human-alone = `h1` alone (cost 1) from the
+  SAME urns/seeds — HCT's h1 draws share that P(h|x), so the two arms stay coupled by construction.
+- Evidence: `src/haidc/arms/hct.py`, `src/haidc/eval/metrics.py`, `src/haidc/arms/run_all.py`;
+  tests `tests/arms/test_hct.py` (21) + `tests/eval/test_metrics.py` (10) green; artifacts
+  `results/hct_predictions.parquet` (31,230 rows = 694×9×5) + `results/hct_operating_points.csv`.
+  Backbone tests not run locally (CPU box; validated on Colab GPU per established convention).
+- Status: active. M3 done; HCT per-instance table frozen as the M6 input contract.
+
 ## TEMPLATE — copy below for the next entry
 ## 2026-MM-DD — <title>
 - Context:
