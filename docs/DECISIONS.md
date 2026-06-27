@@ -197,6 +197,34 @@ here in the same change. Format:
 - Status: active (M2 still partial — sanity gate #2 pending the corrective Colab re-run; reassess
   accept-vs-iterate from the new test acc + train−test gap).
 
+## 2026-06-27 — M2 FINAL: under-training confirmed; backbone DONE (0.829 TEST), interface frozen
+- Context: resolves the accept-vs-iterate question left open by the 2026-06-27 first-run entry
+  (0.769 < 0.83 anchor). The dispositive re-run trained scratch resnet50 for 120 epochs with
+  best-VAL checkpoint selection (git_sha 158d370, Colab CUDA).
+- Verdict: **under-trained, NOT data-limited or label-ceiling.** The earlier 50-epoch recipe gave
+  train 0.81 / test 0.77; 120 ep + best-VAL selection (epoch 58) gives train 0.96 / val 0.827 /
+  **TEST 0.829, 95% bootstrap CI [0.801, 0.857]** (n_boot 1000, θ=0.5). train-acc reaches 1.0 by
+  epoch 89 ⇒ the model CAN fit the data; we stopped at the val-optimal point, not the fit limit.
+  Sanity gate #2 (AI-alone ≈0.83 + CI) **met.**
+- Recipe (frozen, shared by all arms): scratch resnet50, Adam, lr 0.001, 120 epochs, bs 128,
+  wd 0.0; checkpoint selected by VAL accuracy; **TEST read once** (no test-set tuning). Splits
+  n_train 3234 / n_val 693 / n_test 694, seed 0, fresh features (no reusable embeddings ship —
+  train-fresh forced). Okati image transform verified identical (prior entry).
+- Provenance: Okati pinned at SHA **43ec215** (third_party is git-ignored / not a nested repo on
+  Colab, so the run manifest records `vendored_okati_sha: "unknown"` — the real SHA is recorded
+  here instead). Env: Colab GPU **torch 2.11.0+cu128, CUDA 12.8** — deviates from the pinned CPU
+  torch 2.2.2 (expected per the 2026-06-26 env note); if this env is reused, capture a fresh
+  `pip freeze` lockfile hash.
+- Interface: `results/backbone_scores.parquet` (694 rows, manifest-aligned) is the cross-arm
+  contract every later arm reads; force-committed despite `*.parquet` being git-ignored because it
+  is GPU-expensive to regenerate. `results/backbone.pt` (~90 MB) is NOT committed — kept on Drive
+  under `artifacts/`.
+- Carry-forward for M3/HCT (user's parquet analysis; not re-derived locally): at θ=0.5 the
+  checkpoint predicts spiral ≈17% vs the 26.8% base rate — conservative on the minority class —
+  and scores are skewed (median≈0). Harmless for the AI-alone anchor; relevant because HCT sweeps
+  the AI threshold, so the operating points will be sparse where scores pile up near 0.
+- Status: resolved. M2 done; backbone interface frozen.
+
 ## TEMPLATE — copy below for the next entry
 ## 2026-MM-DD — <title>
 - Context:
