@@ -454,6 +454,47 @@ here in the same change. Format:
   the divergent raw-feature run; under the corrected (standardized) fit **no deferral point beats
   AI-alone**. All 19 Mozannar tests + `ruff` still green.
 
+### 2026-06-28 — M6: shared metrics + Pareto frontier + central-claim verdict
+- Context: all four arms had emitted per-instance tables on the frozen 694-instance TEST split; M6
+  must score them through ONE module (invariant §4), assemble the accuracy-vs-human-query-cost
+  frontier with the HCT/L2D shape asymmetry intact, quantify uncertainty, and state the central claim.
+- Decision (metrics): extended `src/haidc/eval/metrics.py` with `tpr`/`fpr` and a single
+  `bootstrap_accuracy_ci(correct, n_resamples, ci, seed)`. **Absorbed** M2's inline bootstrap —
+  `backbone.bootstrap_ci` now delegates to the shared estimator (byte-for-byte identical; pinned by a
+  regression test reproducing the frozen AI-alone CI `[0.80112, 0.85734]`). No arm computes its own metrics.
+- Decision (adapter): one `to_common_frame` reads each arm's table to
+  `(arm, policy, operating_param, seed, GalaxyID, decision, y_debiased, human_queries)`, renaming the
+  per-arm sweep column (theta/b/alpha) and **rejecting** any table missing an agreed column.
+- Decision (TWO uncertainty sources, reported SEPARATELY — never conflated):
+  (a) **bootstrap CI** = finite-test-set noise: percentile bootstrap (n=1000, ci=0.95, seed=0) over
+  the 694 instances, built on the per-instance correctness **averaged over rater seeds 0–4**, so the
+  CI centres on the plotted point and is uniform with AI-alone's deterministic bootstrap. Drawn as
+  error bars. (b) **seed band** = rater-draw noise: **min/max accuracy across seeds 0–4** (stochastic
+  arms only). Drawn as whiskers.
+- Decision (frontier/dominance): x=expected human cost, y=accuracy; deployable frontier = non-dominated
+  points (j dominates i iff cost_j≤cost_i ∧ acc_j≥acc_i, one strict). The **Okati ORACLE policy uses
+  test labels → excluded from the frontier**, plotted only as a dashed non-deployable upper bound. HCT
+  = markers (cost∈[1,2]); Okati-learned & Mozannar = lines (cost∈[0,1]); AI-alone & single-human =
+  labelled points. Single-human baseline reuses HCT's realised `h1` column (same P(h|x)/sampler,
+  invariant §3) — not a fresh draw.
+- Central-claim verdict (with bootstrap CIs, baseline AI-alone = 0.8285): best deployable point per arm —
+  L2D-Okati cost 0.099, acc 0.8337 [0.8063, 0.8608]; L2D-Mozannar cost 0.000, acc 0.8285 [0.8012, 0.8559];
+  HCT cost 1.228, acc 0.8133 [0.7876, 0.8380]; single-human cost 1.0, acc 0.7530 [0.7285, 0.7772].
+  Every deployable CI **overlaps or sits below** 0.8285 → **NO deployable arm significantly beats
+  AI-alone** (Okati's +0.5pt point estimate is inside the CI — not a win). Oracle (non-deployable)
+  reaches 0.892 [0.871, 0.911] as an upper bound only.
+- Alternatives rejected: (a) bootstrapping a single seed=0 realization — discards 4 seeds and decouples
+  the error bar from the plotted seed-mean point; (b) ±1 std seed band — std from 5 draws is noisy and
+  assumes symmetry, min/max is honest about observed spread; (c) re-sampling the single-human draw
+  independently of HCT's h1 — would break the invariant-§3 "same sampler" consistency.
+- Evidence: `src/haidc/eval/metrics.py`, `src/haidc/eval/pareto.py`;
+  `tests/eval/test_metrics.py` + `tests/eval/test_pareto.py` (36 eval+backbone-bootstrap tests green,
+  incl. adapter-rejects-missing-column, per-arm cost accounting, dominance toy, oracle-excluded,
+  CI-lower-bound verdict, pinned AI-alone CI). Outputs `results/figures/pareto_frontier.png` +
+  `results/tables/summary.csv`, each with a sidecar `.manifest.json` (config, seed, repo SHA, input
+  parquet SHA-256). `make eval` deterministic (summary.csv identical across two runs).
+- Status: active. **M6 COMPLETE** — head-to-head frontier + honest verdict produced.
+
 ## TEMPLATE — copy below for the next entry
 ## 2026-MM-DD — <title>
 - Context:

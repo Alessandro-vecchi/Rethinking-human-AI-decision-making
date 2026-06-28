@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from haidc.eval.metrics import bootstrap_accuracy_ci
 from haidc.seed import seed_everything
 
 # P(spiral|x) = P(class 1). Class 0 = smooth/early-type, class 1 = features/disk = spiral, matching
@@ -391,19 +392,13 @@ def ai_alone_accuracy(scores, y_true, *, threshold=0.5) -> float:
 def bootstrap_ci(scores, y_true, *, threshold, n_boot, ci, seed):
     """Percentile bootstrap CI for AI-alone accuracy over the test set (REPRODUCIBILITY.md).
 
-    Inline until the shared eval module exists (M6 to absorb; M2-PLAN §2). Resamples test instances
-    with replacement; deterministic given `seed`.
+    Thin wrapper kept for this module's call site + tests; the estimator now lives in the shared
+    eval module (M6 absorbed the inline copy, invariant §4). Building the per-instance correctness
+    vector first and delegating is byte-for-byte identical to the old inline loop.
     """
-    scores = np.asarray(scores)
-    y_true = np.asarray(y_true)
-    n = len(scores)
-    rng = np.random.RandomState(seed)
-    accs = np.empty(n_boot)
-    for i in range(n_boot):
-        idx = rng.randint(0, n, size=n)
-        accs[i] = ai_alone_accuracy(scores[idx], y_true[idx], threshold=threshold)
-    alpha = (1.0 - ci) / 2.0
-    return float(np.quantile(accs, alpha)), float(np.quantile(accs, 1.0 - alpha))
+    pred = (np.asarray(scores) >= threshold).astype(int)
+    correct = (pred == np.asarray(y_true)).astype(int)
+    return bootstrap_accuracy_ci(correct, n_resamples=n_boot, ci=ci, seed=seed)
 
 
 # --------------------------------------------------------------------------- entry point
