@@ -175,9 +175,12 @@ trusting any number.
       43ec215). `prepare_data.py` stores `X=(10000,3,224,224)` raw preprocessed images (no feature
       extraction); `galaxy_data.pkl` is *generated* from the Kaggle image folder, not shipped; the
       shipped `results/*.pkl` are triage outputs on Okati's own unseeded split with no GalaxyIDs.
-- [U] Mozannar surrogate exact form to re-derive in code (§6 porting note).
+- [V] ~~Mozannar surrogate exact form to re-derive in code (§6 porting note).~~ **Verified = eq (10)**
+      `L_CE^α = −(α·1{m=y}+1{m≠y})·log softmax_y − 1{m=y}·log softmax_⊥` (M5, DECISIONS 2026-06-28).
+      Matches upstream `reject_CrossEntropyLoss`+`train_reject` CODE (the upstream docstring is
+      mislabeled). `L_CE^1 = L_CE` (eq 7).
 - [V] ~~Pinned commit SHAs for both vendored repos.~~ Okati pinned **43ec215** (M2, DECISIONS
-      2026-06-26). Mozannar still [U] (record when cloned for the Mozannar arm).
+      2026-06-26); Mozannar pinned **e84f3ee** (M5, DECISIONS 2026-06-28).
 - [V] ~~Whether to reuse Okati's exact ResNet features for the shared backbone or train a fresh
       one.~~ **Train fresh** — resolved in M2: reuse is impossible (no shipped GalaxyID-aligned
       embeddings; see above). Backbone = Okati-faithful scratch resnet50 trained on the frozen

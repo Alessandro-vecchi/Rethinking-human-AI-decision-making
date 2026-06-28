@@ -9,7 +9,12 @@ l2d_okati:
   # l2d_okati._wire_defaults; override here only to deviate from the M1/M2 artifact locations.
   budget_b_sweep: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]       # deferral budget
 l2d_mozannar:
-  defer_cost_sweep: [0.1, 0.2, 0.5, 1.0, 2.0, 5.0]                    # surrogate cost param
+  # Mozannar & Sontag 2020 consistent surrogate L_CE^α (eq 10) over the FROZEN M2 backbone (Option B);
+  # only the rejector logit g_⊥ is learned on the 2048-d embeddings. The sweep knob is α (NOT a literal
+  # cost): small α → more deferral, large α → automate-everything → AI-alone. α=1 == canonical L_CE.
+  # human_queries = 1 iff defer ⇒ expected cost == deferral fraction in [0,1] (≠ HCT's [1,2]). Paths
+  # wired via l2d_mozannar._wire_defaults; needs results/backbone_embeddings.parquet (shared with Okati).
+  defer_cost_sweep: [0.1, 0.2, 0.5, 1.0, 2.0, 5.0]                    # the α grid for L_CE^α
 baselines:
   ai_alone: true
   single_human: true

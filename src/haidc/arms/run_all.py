@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from haidc.arms import hct, l2d_okati
+from haidc.arms import hct, l2d_mozannar, l2d_okati
 
 
 def main() -> int:
@@ -44,8 +44,14 @@ def main() -> int:
           f"AI-alone {osum['ai_alone_b0']:.4f}, best oracle {osum['best_oracle_accuracy']:.4f}, "
           f"max deferral {osum['max_deferral_fraction']:.4f}")
 
-    # --- L2D-Mozannar (M5), baselines: not yet implemented ------------------
-    print("[L2D-Mozannar] pending (M5)")
+    # --- L2D-Mozannar (M5) --------------------------------------------------
+    moz_cfg = l2d_mozannar._wire_defaults(arms["l2d_mozannar"])
+    msum = l2d_mozannar.run(moz_cfg, eval_cfg)
+    print(f"[L2D-Mozannar] {msum['n_rows']} rows -> {msum['predictions_path']}; "
+          f"AI-alone {msum['ai_alone_accuracy']:.4f}, best {msum['best_accuracy']:.4f} "
+          f"@ α={msum['best_alpha']:g}, deferral {msum['deferral_min']:.3f}->{msum['deferral_max']:.3f}")
+
+    # --- baselines: not yet implemented -------------------------------------
     print("[baselines]    pending (M6)")
     return 0
 

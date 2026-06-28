@@ -183,9 +183,11 @@ correlated humans, contradicting Berger."
 - Deferral cost parameter → smooth Pareto curve (analogous to Okati's `b`, different mechanism).
 - Their experiments: CIFAR-10H (multiclass, violates our binary constraint), hate-speech (3-class,
   synthetic expert), chest X-rays (synthetic experts). **Zero binary real-multi-rater datasets.**
-- [OPEN] The surrogate loss lives in notebooks; must be extracted and verified against
-  arXiv:2006.01862 §3 before any number is trusted. This is estimated as the highest-effort arm.
-- [OPEN] Confirm repo runs on PyTorch ≥2.x.
+- [R] The surrogate loss lived in notebooks; extracted to `src/haidc/arms/l2d_mozannar.py`
+  (`l_ce_alpha`) and VERIFIED against arXiv:2006.01862 eq (10) — exact-value + gradient gate in
+  `tests/arms/test_l2d_mozannar.py` (M5, DECISIONS 2026-06-28). Pinned SHA e84f3ee.
+- [R] Repo loss runs on PyTorch ≥2.x — project `.venv` has torch 2.2.2; the loss is plain torch ops,
+  no port needed (M5).
 
 ---
 

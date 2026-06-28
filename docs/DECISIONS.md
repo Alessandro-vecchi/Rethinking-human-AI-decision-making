@@ -371,6 +371,63 @@ here in the same change. Format:
   the `policy` column distinct; reproduced baseline, sanity envelope, and head-to-head curve all in
   the M6 input contract.
 
+## 2026-06-28 — M5 L2D-Mozannar arm: consistent surrogate L_CE^α over the frozen backbone (Option B)
+- Context: second L2D line, the highest-porting-effort arm (GROUND_TRUTH §6). Same Option-B template
+  as M4 — freeze the M2 backbone as the classifier, learn ONLY the rejector on the 2048-d embeddings
+  — so the two L2D arms stay comparable. Vendored `github.com/clinicalml/learn-to-defer` into
+  `third_party/mozannar2020/`, **pinned SHA `e84f3ee719fe9a9637883eb22ae622717c786bb1`**.
+- Surrogate VERIFIED (the correctness gate, task step 2): the implemented `l_ce_alpha` equals paper
+  eq (10) `L_CE^α = −(α·1{m=y}+1{m≠y})·log softmax_y − 1{m=y}·log softmax_⊥` on hand-built inputs,
+  with a finite/correct gradient (central finite-difference). Transcribed from upstream
+  `reject_CrossEntropyLoss` + `train_reject` (cifar/cifar10_defer_ours.ipynb, SHA e84f3ee). **NB: the
+  upstream docstring for the `m2` weight is mislabeled** (it swaps the indicator — claims α·1{m≠y});
+  the upstream *code* sets `m2=α if m==y else 1` = `(α·1{m=y}+1{m≠y})`, matching eq (10). We follow
+  the code. We use natural `log_softmax` vs upstream `log2`; differs only by the constant 1/ln2
+  (rescales loss/lr, never the minimizer or the argmax rule). `L_CE^1 = L_CE` (eq 7) — tested.
+- Option-B construction + consistency: class logits FROZEN from the backbone score
+  (`g_1=log score`, `g_0=log(1−score)`; appended trainable scalar `g_⊥=MLP(emb)` ⇒ `softmax_⊥=σ(g_⊥)`).
+  Test rule (eq 6): defer iff `g_⊥ ≥ log(max(score,1−score))`. `L_CE^α` is convex in g ⇒ convex in
+  `g_⊥` alone; **at α=1, eq (9)/Prop 2 give the `g_⊥` minimizer = log q(x), recovering the Bayes
+  rejector `r^B = 1{max_y η_y ≤ P(Y=M|x)}`** — so freezing the near-Bayes classifier and learning only
+  `g_⊥` is a CONSISTENT rejector surrogate at α=1 (tested both analytically and via a fitted rejector
+  on memorizable features). α≠1 deliberately shifts the operating point (does NOT STOP — proceeds).
+- Decision (settled with user): sweep knob = **α** over `defer_cost_sweep [0.1,0.2,0.5,1.0,2.0,5.0]`
+  (a reweighting hyperparameter, the analog of Okati's `b` — NOT a literal cost). Expert term = the
+  EXPECTED correctness `q(x)=P(m=y|x)=1−minority share` (soft, deterministic; Rao-Blackwell of eq 10,
+  matches the population loss eq 8). Rejector fit ONCE per α; rater seeds 0–4 enter only at the
+  realized test-time human draw (= HCT's h1), mirroring M4. Cost regime [0,1] (deferral fraction) vs
+  HCT's [1,2] — M6 caption.
+- Realized curve (mean over seeds 0–4; `results/l2d_mozannar_operating_points.csv`, 6 rows):
+  | α | accuracy | deferral |
+  |---|---|---|
+  | 0.1 | 0.7925 | 0.839 |
+  | 0.2 | 0.7928 | 0.811 |
+  | 0.5 | 0.7945 | 0.746 |
+  | 1.0 | **0.8300** | 0.025 |
+  | 2.0 | 0.8285 | 0.000 |
+  | 5.0 | 0.8285 | 0.000 |
+  Checks hold: deferral is **monotone-decreasing in α** (0.839→0.000); large α automates → AI-alone
+  0.8285; cost==deferral∈[0,1]. **α=1 marginally beats AI-alone: 0.8300 (+0.15 pt) at 2.5 % deferral**;
+  the high-deferral end (α≤0.5) sits BELOW AI-alone because it defers 75–84 % to ~75 %-accurate humans
+  (same phenomenon as the M4 learned curve). HONEST disclosure: the α grid samples the deferral axis
+  coarsely — there is a gap between α=0.5 (defer 0.746) and α=1.0 (defer 0.025); the curve is monotone
+  and spans [0,0.84] but the mid-range is sparse. M6 can add intermediate α if a denser frontier helps.
+- Promotes: GROUND_TRUTH §8 "Mozannar surrogate exact form" [U]→[V] (eq 10) and Mozannar SHA [U]→[V]
+  (e84f3ee); HANDOFF §7 surrogate-extraction + torch≥2.x [OPEN]→[V] (project `.venv` has torch 2.2.2;
+  the loss is plain torch ops — no port needed).
+- Alternatives rejected: (a) sweeping the additive deferral cost `c` via the cost-sensitive L̃_CE
+  (eq 4) — defensible but the task/config name the `L_CE^α` knob, and α maps cleanly to the
+  automate-everything anchor; (b) co-training a fresh classifier (Mozannar's upstream default) —
+  would confound the cross-arm comparison (invariants #1/#2); (c) drawing a hard per-seed expert m
+  for training — higher variance and 5× the fits for no consistency gain over the soft q expectation.
+- Evidence: `src/haidc/arms/l2d_mozannar.py`; `tests/arms/test_l2d_mozannar.py` (19 green, incl. the
+  correctness gate, gradient check, and α=1 Bayes-consistency test); `tasks/M5-PLAN.md` (PHASE-1
+  verification); registered in `run_all.py`; fast suite (98) green; `ruff check src tests` clean.
+  Artifacts: `results/l2d_mozannar_predictions.parquet` (20,820 rows = 694×6×5),
+  `results/l2d_mozannar_operating_points.csv` (6 rows). Rejector trains on CPU (tiny MLP — not a
+  backbone train; the no-CPU-backbone convention covers only the ResNet, validated on Colab).
+- Status: active. **M5 COMPLETE** — deployable L_CE^α curve exported for the M6 head-to-head.
+
 ## TEMPLATE — copy below for the next entry
 ## 2026-MM-DD — <title>
 - Context:
