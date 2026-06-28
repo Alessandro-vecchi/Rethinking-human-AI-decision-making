@@ -27,6 +27,8 @@ import pandas as pd
 import pytest
 
 from haidc.arms.l2d_okati import (
+    _assert_learned_le_oracle,
+    _assert_scores_match,
     ai_label_from_score,
     expected_human_loss,
     find_machine_samples,
@@ -323,3 +325,56 @@ def test_learned_rejector_recovers_separable_defer_signal():
     k = int(true_defer.sum())
     topk = set(np.argsort(proba)[-k:].tolist())
     assert topk == set(np.where(true_defer == 1)[0].tolist())
+
+
+# --------------------------------------------------------------------------- learned <= oracle guard
+def _ops(rows):
+    """rows: list of (b, policy, accuracy_mean)."""
+    return pd.DataFrame(
+        [(b, p, a) for (b, p, a) in rows], columns=["b", "policy", "accuracy_mean"]
+    )
+
+
+def test_assert_learned_le_oracle_passes_when_below_envelope():
+    ops = _ops([
+        (0.0, "oracle", 0.8285), (0.0, "learned", 0.8285),   # tie at b=0
+        (0.1, "oracle", 0.8821), (0.1, "learned", 0.8337),
+        (0.5, "oracle", 0.8919), (0.5, "learned", 0.8110),
+    ])
+    _assert_learned_le_oracle(ops)  # no raise
+
+
+def test_assert_learned_le_oracle_raises_when_learned_exceeds():
+    ops = _ops([
+        (0.1, "oracle", 0.8821), (0.1, "learned", 0.8337),
+        (0.5, "oracle", 0.8500), (0.5, "learned", 0.8900),  # learned > oracle -> violation
+    ])
+    with pytest.raises(AssertionError):
+        _assert_learned_le_oracle(ops)
+
+
+def test_assert_learned_le_oracle_noop_without_learned_policy():
+    ops = _ops([(0.0, "oracle", 0.8285), (0.1, "oracle", 0.8821)])
+    _assert_learned_le_oracle(ops)  # oracle-only table -> no raise
+
+
+# --------------------------------------------------------------------------- score-provenance guard
+def test_assert_scores_match_passes_on_equal_scores():
+    test_ids = [1, 2, 3]
+    emb = pd.DataFrame({
+        "GalaxyID": [1, 2, 3, 9], "split": ["test", "test", "test", "train"],
+        "score": [0.10, 0.50, 0.90, 0.42],
+    })
+    scores = _scores_df([(1, 0.10), (2, 0.50), (3, 0.90)])
+    _assert_scores_match(emb, scores, test_ids)  # no raise
+
+
+def test_assert_scores_match_raises_on_perturbed_score():
+    test_ids = [1, 2, 3]
+    emb = pd.DataFrame({
+        "GalaxyID": [1, 2, 3], "split": ["test", "test", "test"],
+        "score": [0.10, 0.50, 0.91],  # id 3 perturbed
+    })
+    scores = _scores_df([(1, 0.10), (2, 0.50), (3, 0.90)])
+    with pytest.raises(AssertionError):
+        _assert_scores_match(emb, scores, test_ids)

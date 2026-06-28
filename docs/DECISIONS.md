@@ -323,10 +323,53 @@ here in the same change. Format:
   Cell 10; Okati train.ipynb Cell-8/Cell-18 (SHA 43ec215); artifacts
   `results/l2d_okati_predictions.parquet` (31,230 oracle rows = 694×9×5) +
   `results/l2d_okati_operating_points.csv`.
-- Status: active. M4 oracle frontier DONE (reproduced baseline + smooth-where-meaningful curve +
+- Status: superseded by 2026-06-28 (learned curve now produced) for the learned half; oracle half
+  unchanged. M4 oracle frontier DONE (reproduced baseline + smooth-where-meaningful curve +
   per-instance table exported, invariants held). LEARNED policy code + tests landed; its real curve
-  is gated on the Colab embedding export (shared with M5). Backbone/embedding GPU paths not run
-  locally (CPU box — established convention).
+  was gated on the Colab embedding export (shared with M5).
+
+## 2026-06-28 — M4 L2D-Okati LEARNED policy produced; M4 complete
+- Context: the staged learned half (DECISIONS 2026-06-27) was runtime-skipped pending the Colab
+  embedding export. `results/backbone_embeddings.parquet` now exists (4621×2051 = 2048 penultimate
+  features + GalaxyID/split/score; train 3234 / val 693 / test 694). This session runs the learned
+  rejector, adds two sanity guards, and regenerates the artifacts with BOTH policies.
+- Decision (learned recipe, NOT tuned to a number — CLAUDE.md): the existing default rejector —
+  MLP (Linear(2048,64)→ReLU→Linear(64,2)→LogSoftmax, Okati gnet head), Adam lr=1e-3, 200 epochs,
+  full-batch, `seed_everything(0)`, CPU, deterministic. Trains on TRAIN embeddings to predict the
+  oracle defer set at the max budget; at TEST the budget is applied label-free by deferring the top
+  floor(b·N) by P(defer). Not retuned to chase accuracy.
+- Two new guards added (tests-first, `tests/arms/test_l2d_okati.py`, +5 cases → 26 total):
+  - `_assert_scores_match`: embeddings TEST `score` == committed `backbone_scores.parquet` — **passes
+    with max|Δ| = 0.0** over 694, confirming the embeddings came from the FROZEN backbone (so the
+    learned arm's `ai_label = 1[score≥0.5]` is identical to the oracle's). Provenance, not a retrain.
+  - `_assert_learned_le_oracle`: learned `accuracy_mean` ≤ oracle at every b (the oracle is the
+    optimum over policies deferring ≤ b·N; learned is feasible ⇒ bounded). **Holds at all 9 b.**
+- Realized curves (mean over rater seeds 0–4; `results/l2d_okati_operating_points.csv`, 18 rows):
+  | b | oracle acc | learned acc | learned deferral |
+  |---|---|---|---|
+  | 0.0 | 0.8285 | 0.8285 | 0.000 |
+  | 0.1 | 0.8821 | **0.8337** | 0.099 |
+  | 0.2 | 0.8919 | 0.8320 | 0.199 |
+  | 0.3 | 0.8919 | 0.8288 | 0.300 |
+  | 0.5 | 0.8919 | 0.8110 | 0.500 |
+  | 0.8 | 0.8919 | 0.7856 | 0.800 |
+  Three checks pass: (1) learned ≤ oracle ∀b; (2) learned populates b=0→0.8 **smoothly** (deferral
+  0.099…0.800) vs the oracle's 0.1715 saturation; (3) b=0 == AI-alone 0.8285.
+- Findings (the honest deployable L2D-Okati result; M6 compares the LEARNED curve head-to-head, never
+  the oracle): the deployable rejector **peaks at b=0.1 → 0.8337, marginally beating AI-alone 0.8285
+  (+0.52 pt)**, then declines monotonically (forced to defer AI-correct instances to ~75 %-accurate
+  humans). At its peak it recovers only ~0.5 pt of the oracle's ~6 pt headroom (oracle 0.8821 at
+  b=0.1; gap 0.048) — the 2048-d frozen embeddings do not predict AI errors well enough to realize
+  the Thm-3 optimum. Cost regime stays [0,1] (deferral fraction) vs HCT's [1,2] — M6 caption.
+- Artifacts regenerated (both policies): `results/l2d_okati_predictions.parquet` now **62,460 rows**
+  (694×9×5×2) and `results/l2d_okati_operating_points.csv` 18 rows; force-committed (M3 precedent).
+- Evidence: `src/haidc/arms/l2d_okati.py` (`_assert_scores_match`, `_assert_learned_le_oracle`,
+  learned summary fields); `tests/arms/test_l2d_okati.py` (26 green); fast suite (74) green;
+  `ruff check src tests` clean. Learned rejector trained on CPU (tiny MLP — not a backbone train;
+  the no-CPU-backbone convention covers only the ResNet, validated on Colab).
+- Status: active. **M4 COMPLETE** — oracle (upper bound) + learned (deployable) both exported with
+  the `policy` column distinct; reproduced baseline, sanity envelope, and head-to-head curve all in
+  the M6 input contract.
 
 ## TEMPLATE — copy below for the next entry
 ## 2026-MM-DD — <title>

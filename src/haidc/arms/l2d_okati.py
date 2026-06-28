@@ -367,6 +367,46 @@ def _assert_frozen_split(manifest: dict, test_ids) -> None:
         )
 
 
+def _assert_learned_le_oracle(ops: pd.DataFrame, tol: float = 1e-9) -> None:
+    """The learned frontier must sit at/below the oracle at every budget b.
+
+    The oracle is the optimal triage over policies deferring <= b*N (Thm. 3, in expectation over the
+    human term); the learned rejector defers <= b*N, so it is feasible and therefore bounded by the
+    oracle. A violation means a bug (e.g. policies misaligned or the oracle not optimal). No-op when
+    the learned policy is absent.
+    """
+    if "learned" not in set(ops["policy"]):
+        return
+    o = ops[ops["policy"] == "oracle"].set_index("b")["accuracy_mean"]
+    for _i, r in ops[ops["policy"] == "learned"].iterrows():
+        b = r["b"]
+        if b in o.index and r["accuracy_mean"] > float(o.loc[b]) + tol:
+            raise AssertionError(
+                f"learned accuracy {r['accuracy_mean']:.4f} > oracle {float(o.loc[b]):.4f} at b={b} "
+                "(learned must sit at/below the oracle upper bound)"
+            )
+
+
+def _assert_scores_match(emb_df: pd.DataFrame, scores_df: pd.DataFrame, test_ids, tol: float = 1e-9) -> None:
+    """Frozen-model provenance: the embeddings' TEST score must equal the committed backbone scores.
+
+    Confirms `backbone_embeddings.parquet` was produced from the same frozen backbone as
+    `backbone_scores.parquet` (so the learned arm's `ai_label` matches the oracle's). Loud on drift.
+    """
+    test_ids = [int(g) for g in test_ids]
+    e = emb_df[emb_df["split"] == "test"].set_index("GalaxyID")["score"]
+    s = scores_df.set_index("GalaxyID")["score"]
+    missing = [g for g in test_ids if g not in e.index]
+    if missing:
+        raise AssertionError(f"{len(missing)} TEST ids missing from embeddings 'test' split (e.g. {missing[:3]})")
+    diff = float((e.reindex(test_ids).to_numpy() - s.reindex(test_ids).to_numpy()).__abs__().max())
+    if diff > tol:
+        raise AssertionError(
+            f"embeddings TEST score != committed backbone_scores (max|Δ|={diff:.3e} > {tol:.0e}); "
+            "the embeddings were not produced from the frozen backbone"
+        )
+
+
 # --------------------------------------------------------------------------- driver
 def run(cfg: dict, eval_cfg: dict) -> dict:
     """Run the L2D-Okati arm end-to-end; write artifacts; return a terse summary (no printing)."""
@@ -396,6 +436,7 @@ def run(cfg: dict, eval_cfg: dict) -> dict:
     if learned_available:
         emb_df = pd.read_parquet(emb_path)
         validate_embeddings_frame(emb_df, manifest)
+        _assert_scores_match(emb_df, scores_df, test_ids)  # embeddings come from the frozen backbone
         train_ids = [int(g) for g in manifest["train"]]
         learned = run_learned_sweep(emb_df, label_df, train_ids, test_ids, budgets, seeds,
                                     seed=int(cfg.get("seed", 0)))
@@ -405,6 +446,7 @@ def run(cfg: dict, eval_cfg: dict) -> dict:
     _assert_oracle_defers_only_errors(pred)
     ops = operating_points(pred)
     _assert_cost_unit(ops)
+    _assert_learned_le_oracle(ops)  # learned must sit at/below the oracle upper bound
 
     Path(cfg["export_predictions_path"]).parent.mkdir(parents=True, exist_ok=True)
     pred.to_parquet(cfg["export_predictions_path"], index=False)
@@ -414,7 +456,7 @@ def run(cfg: dict, eval_cfg: dict) -> dict:
     oracle = ops[ops["policy"] == "oracle"]
     ai_alone = float(oracle.loc[oracle["b"] == 0.0, "accuracy_mean"].iloc[0]) if (oracle["b"] == 0.0).any() else float("nan")
     best_oracle = float(oracle["accuracy_mean"].max())
-    return {
+    summary = {
         "n_test": len(test_ids),
         "n_budgets": len(budgets),
         "n_seeds": len(seeds),
@@ -429,6 +471,21 @@ def run(cfg: dict, eval_cfg: dict) -> dict:
         "predictions_path": cfg["export_predictions_path"],
         "operating_points_path": cfg["export_operating_points_path"],
     }
+    if learned_available:
+        learned = ops[ops["policy"] == "learned"].set_index("b")
+        best_b = float(learned["accuracy_mean"].idxmax())
+        best_learned = float(learned["accuracy_mean"].max())
+        # learned-vs-oracle headroom recovered at the learned peak (oracle is the upper bound)
+        gap_at_peak = float(oracle.set_index("b").loc[best_b, "accuracy_mean"]) - best_learned
+        summary.update({
+            "best_learned_accuracy": best_learned,
+            "best_learned_b": best_b,
+            "learned_beats_ai_alone": bool(best_learned > ai_alone + 1e-9),
+            "learned_deferral_min": float(learned["deferral_fraction"].min()),
+            "learned_deferral_max": float(learned["deferral_fraction"].max()),
+            "learned_vs_oracle_gap_at_peak": gap_at_peak,
+        })
+    return summary
 
 
 def _wire_defaults(cfg: dict) -> dict:
@@ -461,7 +518,12 @@ def main() -> int:
     print(f"  predictions -> {summary['predictions_path']}")
     print(f"  operating points -> {summary['operating_points_path']}")
     print(f"  AI-alone (b=0) = {summary['ai_alone_b0']:.4f} | best oracle acc = {summary['best_oracle_accuracy']:.4f} "
-          f"| beats AI-alone: {summary['beats_ai_alone']} | max deferral = {summary['max_deferral_fraction']:.4f}")
+          f"(upper bound) | max oracle deferral = {summary['max_deferral_fraction']:.4f}")
+    if summary["learned_available"]:
+        print(f"  [learned, deployable] best acc = {summary['best_learned_accuracy']:.4f} @ b={summary['best_learned_b']:.2f} "
+              f"| beats AI-alone: {summary['learned_beats_ai_alone']} "
+              f"| deferral spans {summary['learned_deferral_min']:.3f}->{summary['learned_deferral_max']:.3f} "
+              f"| oracle headroom at peak = {summary['learned_vs_oracle_gap_at_peak']:.4f}")
     print("  (b, policy) -> (accuracy_mean [lo,hi], cost_mean=deferral)")
     for r in summary["operating_points"]:
         print(f"    b={r['b']:.2f} {r['policy']:<7} -> acc {r['accuracy_mean']:.4f} "
