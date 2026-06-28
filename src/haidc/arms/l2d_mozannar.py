@@ -189,6 +189,19 @@ def _frozen_test_arrays(emb_df, label_df, ids):
     return emb, score, ai_label_from_score(score), y
 
 
+def _standardize(train, test):
+    """Z-score features using TRAIN statistics (mu, sd from train; applied to both). The reweighted
+    L_CE^α surrogate diverges on the raw 2048-d ResNet features (|x| up to ~5, unnormalized): Adam
+    blows g_⊥ up to defer-everything for some α, producing a non-monotone, holed frontier. Whitening
+    the rejector's input removes that — the learned curve then tracks the analytic per-sample optimum
+    (DECISIONS 2026-06-28). Arm-internal only; the shared frozen backbone/split are untouched. Okati's
+    plain NLL triage net is numerically stable on raw features and is left as-is for comparability.
+    """
+    mu = train.mean(axis=0)
+    sd = train.std(axis=0) + 1e-8
+    return (train - mu) / sd, (test - mu) / sd
+
+
 def run_alpha_sweep(emb_df, label_df, train_ids, test_ids, alphas, seeds,
                     *, seed: int = 0, **fit_kw) -> pd.DataFrame:
     """policy="mozannar": for each α, fit g_⊥ on TRAIN (frozen classifier), apply the deferral rule
@@ -207,6 +220,7 @@ def run_alpha_sweep(emb_df, label_df, train_ids, test_ids, alphas, seeds,
                                 lab.loc[train_ids, "n_features"].to_numpy(), tr_y)
 
     te_emb, te_score, ai, te_y = _frozen_test_arrays(emb_df, label_df, test_ids)
+    tr_emb, te_emb = _standardize(tr_emb, te_emb)  # whiten rejector input (stability; see _standardize)
     humans_by_seed = {int(s): _draw_humans_per_seed(label_df, test_ids, int(s)) for s in seeds}
 
     rows = []

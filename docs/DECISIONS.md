@@ -397,21 +397,27 @@ here in the same change. Format:
   matches the population loss eq 8). Rejector fit ONCE per α; rater seeds 0–4 enter only at the
   realized test-time human draw (= HCT's h1), mirroring M4. Cost regime [0,1] (deferral fraction) vs
   HCT's [1,2] — M6 caption.
-- Realized curve (mean over seeds 0–4; `results/l2d_mozannar_operating_points.csv`, 6 rows):
+- Realized curve (mean over seeds 0–4; `results/l2d_mozannar_operating_points.csv`, 11 rows — after
+  the 2026-06-28 frontier-densification fix below):
   | α | accuracy | deferral |
   |---|---|---|
-  | 0.1 | 0.7925 | 0.839 |
-  | 0.2 | 0.7928 | 0.811 |
-  | 0.5 | 0.7945 | 0.746 |
-  | 1.0 | **0.8300** | 0.025 |
+  | 0.1 | 0.7867 | 0.816 |
+  | 0.2 | 0.7899 | 0.797 |
+  | 0.5 | 0.7948 | 0.729 |
+  | 0.6 | 0.7960 | 0.687 |
+  | 0.7 | 0.7948 | 0.663 |
+  | 0.8 | 0.7954 | 0.610 |
+  | 0.9 | 0.8069 | 0.324 |
+  | 0.95 | 0.8219 | 0.098 |
+  | 1.0 | 0.8254 | 0.022 |
   | 2.0 | 0.8285 | 0.000 |
   | 5.0 | 0.8285 | 0.000 |
-  Checks hold: deferral is **monotone-decreasing in α** (0.839→0.000); large α automates → AI-alone
-  0.8285; cost==deferral∈[0,1]. **α=1 marginally beats AI-alone: 0.8300 (+0.15 pt) at 2.5 % deferral**;
-  the high-deferral end (α≤0.5) sits BELOW AI-alone because it defers 75–84 % to ~75 %-accurate humans
-  (same phenomenon as the M4 learned curve). HONEST disclosure: the α grid samples the deferral axis
-  coarsely — there is a gap between α=0.5 (defer 0.746) and α=1.0 (defer 0.025); the curve is monotone
-  and spans [0,0.84] but the mid-range is sparse. M6 can add intermediate α if a denser frontier helps.
+  Checks hold: deferral is **monotone-decreasing in α** (0.816→0.000); large α automates → AI-alone
+  0.8285; cost==deferral∈[0,1]. **No deferral point beats AI-alone** (best = AI-alone 0.8285 at α≥2):
+  accuracy rises monotonically as deferral falls, because every deferral hands the decision to a single
+  ~75 %-accurate urn draw that is worse than the AI on average (the same phenomenon as the M4-Okati
+  learned curve — deferring to one noisy human cannot beat this backbone). This is a genuine null
+  result for human-deferral on Galaxy Zoo, reported honestly, not buried.
 - Promotes: GROUND_TRUTH §8 "Mozannar surrogate exact form" [U]→[V] (eq 10) and Mozannar SHA [U]→[V]
   (e84f3ee); HANDOFF §7 surrogate-extraction + torch≥2.x [OPEN]→[V] (project `.venv` has torch 2.2.2;
   the loss is plain torch ops — no port needed).
@@ -423,10 +429,30 @@ here in the same change. Format:
 - Evidence: `src/haidc/arms/l2d_mozannar.py`; `tests/arms/test_l2d_mozannar.py` (19 green, incl. the
   correctness gate, gradient check, and α=1 Bayes-consistency test); `tasks/M5-PLAN.md` (PHASE-1
   verification); registered in `run_all.py`; fast suite (98) green; `ruff check src tests` clean.
-  Artifacts: `results/l2d_mozannar_predictions.parquet` (20,820 rows = 694×6×5),
-  `results/l2d_mozannar_operating_points.csv` (6 rows). Rejector trains on CPU (tiny MLP — not a
+  Artifacts: `results/l2d_mozannar_predictions.parquet` (38,170 rows = 694×11×5),
+  `results/l2d_mozannar_operating_points.csv` (11 rows). Rejector trains on CPU (tiny MLP — not a
   backbone train; the no-CPU-backbone convention covers only the ResNet, validated on Colab).
 - Status: active. **M5 COMPLETE** — deployable L_CE^α curve exported for the M6 head-to-head.
+
+### 2026-06-28 — frontier densification + standardization fix (pre-M6)
+- Problem: the original 6-α grid `[0.1,0.2,0.5,1.0,2.0,5.0]` left the whole 0.03–0.75 deferral band
+  unsampled (α near 1 is hypersensitive). Densifying to `[…,0.6,0.7,0.8,0.9,0.95,…]` (11 α) exposed a
+  second, worse bug: deferral was **non-monotone** in α — α=0.6 collapsed to defer-EVERYTHING (1.00)
+  while α=0.7 deferred 0.21, at both 200 AND 1500 epochs. Root cause (diagnosed, not guessed): the
+  reweighted `L_CE^α` is convex in `g_⊥` with a FINITE minimizer, so defer-all (g_⊥→+∞, infinite loss)
+  is **training divergence**, not a valid optimum — Adam destabilized on the raw, unnormalized 2048-d
+  ResNet features (|x| up to ~5.3) for certain α-weightings.
+- Fix: **standardize the rejector's input** (z-score with TRAIN mu/sd, applied to train+test) inside
+  `run_alpha_sweep._standardize`. Principled (standard MLP practice), NOT tuned to a number — the
+  default recipe (hidden=64, epochs=200, lr=1e-3, Okati-matched) is unchanged. Confirmed against the
+  closed-form per-sample optimum `g_⊥*(x)=log q − log(1+(α−1)q)` (which is monotone in α and spans
+  deferral [0,0.79]): the standardized learned curve is now monotone and tracks it closely. Arm-internal
+  only — the shared frozen backbone/split are untouched; the L2D-Okati arm uses a plain NLL triage net
+  that is numerically stable on raw features, so it is left as-is (M4 numbers unchanged) for comparability.
+- Result: the mid-deferral region is now densely sampled (0.10–0.73) and the curve is monotone (table
+  above). Correction to the prior 6-α entry: the earlier "α=1 beats AI-alone 0.8300" was an artifact of
+  the divergent raw-feature run; under the corrected (standardized) fit **no deferral point beats
+  AI-alone**. All 19 Mozannar tests + `ruff` still green.
 
 ## TEMPLATE — copy below for the next entry
 ## 2026-MM-DD — <title>

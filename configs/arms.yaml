@@ -14,7 +14,9 @@ l2d_mozannar:
   # cost): small α → more deferral, large α → automate-everything → AI-alone. α=1 == canonical L_CE.
   # human_queries = 1 iff defer ⇒ expected cost == deferral fraction in [0,1] (≠ HCT's [1,2]). Paths
   # wired via l2d_mozannar._wire_defaults; needs results/backbone_embeddings.parquet (shared with Okati).
-  defer_cost_sweep: [0.1, 0.2, 0.5, 1.0, 2.0, 5.0]                    # the α grid for L_CE^α
+  # α near 1 is hypersensitive (deferral collapses 0.75→0.03 between α=0.5 and 1.0), so the grid is
+  # densified through 0.6–0.95 to sample the mid-deferral frontier M6 needs.
+  defer_cost_sweep: [0.1, 0.2, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0, 2.0, 5.0]   # the α grid for L_CE^α
 baselines:
   ai_alone: true
   single_human: true
