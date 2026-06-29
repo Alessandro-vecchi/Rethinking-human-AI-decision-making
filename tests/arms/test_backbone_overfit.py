@@ -2,12 +2,17 @@
 
 Mandatory sanity check before any full run: the Okati-faithful model (scratch resnet50 +
 Linear(2048,2) + LogSoftmax, NLLLoss) must be able to drive a single small batch to ~0 loss,
-i.e. it can learn at all. Kept tiny (4 synthetic images) so it runs on CPU in seconds.
+i.e. it can learn at all. The fixture is tiny (4 synthetic images), but 60 epochs of resnet50
+forward+backward is CPU-prohibitive (a single backward pass alone exceeds 30s here), so this is
+marked `slow` and runs on a Colab GPU — `pytest -m slow`. See HANDOFF §3a / tests/README.md.
 """
 import numpy as np
+import pytest
 
 from haidc.arms.backbone import build_model, train_model
 from haidc.seed import seed_everything
+
+pytestmark = pytest.mark.slow
 
 
 def test_single_batch_overfits_to_near_zero_loss():

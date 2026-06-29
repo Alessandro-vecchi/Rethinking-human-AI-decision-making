@@ -20,7 +20,10 @@ data:          # build frozen Galaxy Zoo split + multi-rater label table (M1)
 verify-split:  # assert the split manifest matches the recorded hash (guards confounds)
 	python -m haidc.data.verify_split --config configs/data.yaml
 
-backbone:      # train/load the SHARED AI classifier reused by every arm (M2)
+backbone:      # GPU/Colab ONLY: train shared classifier + export scores & embeddings (M2/Stage-B)
+	# Produces results/backbone_scores.parquet + results/backbone_embeddings.parquet — the frozen
+	# interface every arm consumes. Requires a GPU + the raw images; ran on Colab, outputs committed.
+	# NOT part of `make all` (see REPRODUCE.md). Do not run on this CPU box (tests are marked `slow`).
 	python -m haidc.arms.backbone --config configs/backbone.yaml
 
 arms:          # run HCT, L2D-Okati, L2D-Mozannar, baselines (M3-M5)
@@ -32,6 +35,12 @@ eval:          # compute metrics + Pareto frontier + plots (M6)
 report:        # assemble the 2-3 page technical report from results/ (M7)
 	@echo "See tasks/M7-report.md"
 
-all: data verify-split backbone arms eval report
-clean:
+# `all` reproduces the report's figure + table on a clean CPU checkout from the COMMITTED frozen
+# artifacts (data/label_table.parquet + results/backbone_{scores,embeddings}.parquet): it re-runs
+# the arms (M3-M5) then eval (M6), deterministically (two runs identical). The preprocessing that
+# PRODUCED those artifacts — `data`/`verify-split` (rebuild the label table from the raw Willett/
+# Kaggle catalogs in data/raw, ~161M, NOT committed) and `backbone` (GPU/Colab) — is upstream of the
+# frozen interface and is documented in docs/REPRODUCE.md, not run here.
+all: arms eval report
+clean:          # remove regenerable figures/tables/caches; NEVER the committed frozen *.parquet
 	rm -rf results/figures/* results/tables/* .pytest_cache .ruff_cache

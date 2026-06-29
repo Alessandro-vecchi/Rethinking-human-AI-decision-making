@@ -495,6 +495,40 @@ here in the same change. Format:
   parquet SHA-256). `make eval` deterministic (summary.csv identical across two runs).
 - Status: active. **M6 COMPLETE** — head-to-head frontier + honest verdict produced.
 
+## 2026-06-29 — M7: report + reproducibility polish (the make-all gate)
+- Context: M7 = the 2–3 page report (`docs/REPORT.md`) + repo polish so the figure/table reproduce
+  from a clean checkout. M6 flagged a hanging test suite; the committed-artifact reproducibility
+  boundary was undocumented and `make all` did not match reality.
+- Decision (hanging test): the suite hung in the **scratch-resnet50 backbone-training tests** on CPU
+  (`test_backbone_overfit` trains 60 epochs — a single backward pass alone exceeds 30s, confirmed
+  with `pytest-timeout`). Added a `slow` marker (`pyproject.toml`), marked all 8 resnet-training
+  tests `@pytest.mark.slow`, and set `addopts = "-q --timeout=60 -m 'not slow'"` so `make test` is
+  green in ~40s on CPU; the slow tests run on a Colab GPU via `pytest -m slow`. This formalizes the
+  long-standing "no CPU backbone tests" convention (`HANDOFF.md` §3a). Added `pytest-timeout==2.4.0`
+  to `requirements.txt`. Result: **123 passed, 8 deselected**.
+- Decision (reproducibility boundary): `make eval`/`make arms` consume only the **committed frozen
+  interface** — no arm runs resnet at runtime. `make data`/`make verify-split` rebuild the label
+  table from the raw Willett/Kaggle catalogs (`data/raw`, ~161M) + crosswalk (NOT committed), and
+  `make backbone` needs a GPU. So `all` is redefined from `data verify-split backbone arms eval
+  report` → **`arms eval report`** (the CPU chain), with `data`/`verify-split`/`backbone` documented
+  as the upstream GPU/raw-data preprocessing in the new `docs/REPRODUCE.md`. Verified: `make all`
+  reproduces the figure + `summary.csv` byte-identically; two `make eval` runs give an identical
+  summary hash.
+- Decision (commit the frozen interface): to make the full `arms → eval` chain reproduce on a clean
+  CPU checkout (user-chosen scope), committed two previously-gitignored artifacts via `.gitignore`
+  negations — `data/label_table.parquet` (84K) and `results/backbone_embeddings.parquet` (**69M**;
+  under GitHub's 100M hard limit, over the 50M warning). The raw catalogs + crosswalk stay ignored.
+- Alternatives rejected: (a) reducing the overfit test's epochs to run on CPU — would weaken the
+  M2 sanity check and still load resnet50; marking `slow` preserves the test for GPU. (b) eval-only
+  `all` committing just the 84K label table (arms not re-run by default) — lighter git, satisfies the
+  CLAUDE.md gate, but does not re-execute the arms; rejected per user choice to reproduce the full
+  CPU chain. (c) committing nothing new — `make all` could not reproduce on a clean checkout; fails
+  the gate.
+- Evidence: `docs/REPORT.md` (every number traces to `results/tables/summary.csv` / the figure
+  manifest; citations per `CITATIONS.md`), `docs/REPRODUCE.md`, `Makefile`, `pyproject.toml`,
+  `requirements.txt`, `.gitignore`, the 4 backbone test modules, `tests/README.md`.
+- Status: active. **M7 COMPLETE** — report written, `make all` reproduces deterministically on CPU.
+
 ## TEMPLATE — copy below for the next entry
 ## 2026-MM-DD — <title>
 - Context:

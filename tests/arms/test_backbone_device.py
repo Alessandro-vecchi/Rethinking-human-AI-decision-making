@@ -8,6 +8,7 @@ green on this machine (CUDA=False) while proving the same code auto-selects CUDA
 import math
 
 import numpy as np
+import pytest
 import torch
 
 from haidc.arms.backbone import (
@@ -29,6 +30,7 @@ def test_resolve_device_explicit_and_auto():
     assert dev.type == expected
 
 
+@pytest.mark.slow  # trains the scratch resnet50 (CPU-prohibitive); runs on GPU. HANDOFF §3a.
 def test_train_model_runs_through_device_path():
     """Device plumbing: training runs on the requested device and yields finite per-epoch losses.
 

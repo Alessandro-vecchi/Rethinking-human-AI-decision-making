@@ -1,13 +1,17 @@
 """M2 backbone determinism — written before haidc.arms.backbone (REPRODUCIBILITY.md).
 
 Reproduction guard: a same-seed build+train+export must produce value-identical scores across
-two invocations. Guards "if a number cannot be reproduced it is not a result." Tiny fixture so
-it runs on CPU in seconds; catches nondeterminism in init, optimizer, and forward.
+two invocations. Guards "if a number cannot be reproduced it is not a result." Catches
+nondeterminism in init, optimizer, and forward. Trains the scratch resnet50 twice, which is
+CPU-prohibitive, so this is marked `slow` and runs on a Colab GPU — `pytest -m slow`. See HANDOFF §3a.
 """
 import numpy as np
+import pytest
 
 from haidc.arms.backbone import build_model, predict_spiral_proba, train_model
 from haidc.seed import seed_everything
+
+pytestmark = pytest.mark.slow
 
 
 def _train_and_score():

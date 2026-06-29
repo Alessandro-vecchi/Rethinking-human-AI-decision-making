@@ -1,0 +1,111 @@
+{
+  "stage": "eval",
+  "config": {
+    "bootstrap": {
+      "n_resamples": 1000,
+      "ci": 0.95,
+      "seed": 0
+    },
+    "rater_draw_seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "figure_path": "results/figures/pareto_frontier.png",
+    "table_path": "results/tables/summary.csv"
+  },
+  "seed": 0,
+  "git_sha": "a41788ae49b1a193042ba1a4cf9b0273da182ab6",
+  "input_table_sha256": {
+    "scores": "4580b1d980d8cae4dfe8403dac9ca51d7bfada5f98d9c828b9d5639e70164127",
+    "label_table": "19a30c56055c4d2a10a9451beb144a36c5f87df77c015149a0c9ca0cc868edb5",
+    "hct": "5891fd65d5c6f9771753a421759c8546e5604f27273daa29c457cf1a8c973b89",
+    "okati": "c6591441b2dcbceacdabb3e686179e5a337d83c8d71ca1ad7fb8d92443f2e93e",
+    "mozannar": "cb54b6d9857dd7e347191bce596bebc0a7ec246f292a9dcebf9d5a497577f0f8"
+  },
+  "generated_at_utc": "2026-06-29T12:48:50+00:00",
+  "baseline_ai_alone_accuracy": 0.8285302593659942,
+  "frontier_points": [
+    {
+      "arm": "ai_alone",
+      "policy": "ai_alone",
+      "cost_mean": 0.0,
+      "accuracy_mean": 0.8285302593659942
+    },
+    {
+      "arm": "l2d_okati",
+      "policy": "learned",
+      "cost_mean": 0.0,
+      "accuracy_mean": 0.8285302593659942
+    },
+    {
+      "arm": "l2d_mozannar",
+      "policy": "mozannar",
+      "cost_mean": 0.0,
+      "accuracy_mean": 0.8285302593659942
+    },
+    {
+      "arm": "l2d_mozannar",
+      "policy": "mozannar",
+      "cost_mean": 0.0,
+      "accuracy_mean": 0.8285302593659942
+    },
+    {
+      "arm": "l2d_okati",
+      "policy": "learned",
+      "cost_mean": 0.0994236311239193,
+      "accuracy_mean": 0.8337175792507205
+    }
+  ],
+  "central_claim_verdict": [
+    {
+      "arm": "hct",
+      "policy": "hct",
+      "operating_param": 0.1,
+      "accuracy_mean": 0.8132564841498559,
+      "ci_lo": 0.7876008645533141,
+      "ci_hi": 0.8380475504322767,
+      "cost_mean": 1.2276657060518732,
+      "beats": false,
+      "overlaps_baseline": true
+    },
+    {
+      "arm": "l2d_okati",
+      "policy": "learned",
+      "operating_param": 0.1,
+      "accuracy_mean": 0.8337175792507205,
+      "ci_lo": 0.8063400576368877,
+      "ci_hi": 0.8608069164265131,
+      "cost_mean": 0.0994236311239193,
+      "beats": false,
+      "overlaps_baseline": true
+    },
+    {
+      "arm": "l2d_mozannar",
+      "policy": "mozannar",
+      "operating_param": 2.0,
+      "accuracy_mean": 0.8285302593659942,
+      "ci_lo": 0.8011527377521613,
+      "ci_hi": 0.8559438040345821,
+      "cost_mean": 0.0,
+      "beats": false,
+      "overlaps_baseline": true
+    },
+    {
+      "arm": "single_human",
+      "policy": "single_human",
+      "operating_param": 1.0,
+      "accuracy_mean": 0.7530259365994236,
+      "ci_lo": 0.7285230547550431,
+      "ci_hi": 0.7772334293948127,
+      "cost_mean": 1.0,
+      "beats": false,
+      "overlaps_baseline": false
+    }
+  ],
+  "any_deployable_arm_beats_ai_alone": false,
+  "figure_path": "results/figures/pareto_frontier.png",
+  "table_path": "results/tables/summary.csv"
+}

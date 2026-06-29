@@ -15,7 +15,14 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# `slow` = trains the scratch resnet50 backbone (M2); CPU-prohibitive (one 60-epoch overfit
+# backward pass alone exceeds 30s), so deselected by default and a 60s per-test timeout guards
+# against any future hang. These tests validate on a Colab GPU: run `pytest -m slow`. See
+# docs/HANDOFF.md §3a and tests/README.md.
+addopts = "-q --timeout=60 -m 'not slow'"
+markers = [
+    "slow: trains the scratch resnet50 backbone; CPU-prohibitive, run on GPU (HANDOFF §3a)",
+]
 
 [tool.ruff]
 src = ["src", "tests"]

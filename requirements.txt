@@ -16,4 +16,5 @@ tqdm==4.68.3
 # dev
 pytest==9.1.1
 pytest-cov==7.1.0
+pytest-timeout==2.4.0    # per-test timeout guard (addopts --timeout=60); deselects/bounds slow GPU tests
 ruff==0.15.20

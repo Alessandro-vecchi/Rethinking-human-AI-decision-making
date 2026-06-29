@@ -12,6 +12,7 @@ import math
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from haidc.arms import backbone as bb
 from haidc.arms.backbone import (
@@ -51,6 +52,7 @@ def _train(select_best_val):
     return hist, model
 
 
+@pytest.mark.slow  # trains the scratch resnet50 (CPU-prohibitive); runs on GPU. HANDOFF §3a.
 def test_history_has_per_epoch_curves():
     hist, _ = _train(select_best_val=False)
     for key in ("train_loss", "train_acc", "val_loss", "val_acc"):
@@ -61,12 +63,14 @@ def test_history_has_per_epoch_curves():
     assert 1 <= hist["best_epoch"] <= 5
 
 
+@pytest.mark.slow  # trains the scratch resnet50 (CPU-prohibitive); runs on GPU. HANDOFF §3a.
 def test_best_epoch_is_argmax_of_val_curve():
     hist, _ = _train(select_best_val=True)
     assert hist["best_epoch"] == select_best_epoch(hist["val_acc"]) + 1  # 1-indexed in manifest
     assert hist["val_acc"][hist["best_epoch"] - 1] == max(hist["val_acc"])
 
 
+@pytest.mark.slow  # trains the scratch resnet50 twice (CPU-prohibitive); runs on GPU. HANDOFF §3a.
 def test_select_best_val_loads_best_not_last():
     """select_best_val swaps in the best-VAL weights. Training is identical either way (selection
     happens only at the end), so the two runs share a val curve; the exported *weights* differ iff
@@ -88,6 +92,7 @@ def test_select_best_val_loads_best_not_last():
 
 
 # --------------------------------------------------------------------------- back-compat
+@pytest.mark.slow  # trains the scratch resnet50 (CPU-prohibitive); runs on GPU. HANDOFF §3a.
 def test_return_losses_still_yields_train_loss_list():
     # existing callers (device/overfit/determinism tests) must keep working unchanged.
     seed_everything(0)
@@ -98,6 +103,7 @@ def test_return_losses_still_yields_train_loss_list():
 
 
 # --------------------------------------------------------------------------- run() manifest
+@pytest.mark.slow  # run() trains the scratch resnet50 (CPU-prohibitive); runs on GPU. HANDOFF §3a.
 def test_run_manifest_carries_val_fields(tmp_path, monkeypatch):
     """run() trains on train, selects on val, scores test from the best-VAL checkpoint, and records
     the val fields + curves. Split/labels/images are stubbed tiny so it runs on CPU in seconds.
