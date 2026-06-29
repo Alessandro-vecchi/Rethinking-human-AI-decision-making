@@ -1,0 +1,205 @@
+\documentclass[10pt]{article}
+
+% --- Faithful LaTeX conversion of docs/REPORT.md (M7). Content is verbatim: no number, CI,
+% --- claim, citation, or caveat differs from the Markdown source. Compile from docs/:
+% ---   cd docs && latexmk -pdf REPORT.tex      (or: pdflatex REPORT.tex twice; or: tectonic REPORT.tex)
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=0.9in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{../results/figures/}}
+
+% Compact lists + tighter title/caption spacing to keep the report to 2--3 pages.
+\setlist{itemsep=1pt, topsep=3pt, parsep=0pt}
+\captionsetup{font=small, skip=4pt}
+\setlength{\emergencystretch}{2em}  % absorb minor overfull boxes from long \texttt tokens
+
+% arXiv identifiers rendered as links (cosmetic; the identifier text is the sanctioned citation).
+\newcommand{\arxiv}[1]{\href{https://arxiv.org/abs/#1}{arXiv:#1}}
+
+\title{Auditability, not accuracy: a head-to-head of Hybrid Confirmation\\
+Trees and Learning-to-Defer on Galaxy Zoo}
+\author{}
+\date{June 2026}
+
+\begin{document}
+\maketitle
+\vspace{-2.5em}
+
+\section{Framing and contribution}
+
+Human--AI decision pipelines are usually evaluated \emph{within} a paradigm: a learning-to-defer
+(L2D) method against other L2D methods, or a confirmation/consultation rule against a single-human
+or AI-alone baseline. The \textbf{Hybrid Confirmation Tree (HCT)} of Berger et al.\ (HCT-1,
+\arxiv{2602.02375}; follow-up HCT-2, \arxiv{2603.29866}) and the L2D line of Okati, De \&
+G\'omez-Rodr\'iguez (NeurIPS 2021, \arxiv{2103.08902}) and Mozannar \& Sontag (ICML 2020,
+\arxiv{2006.01862}) have, to our knowledge, never been compared \textbf{head-to-head on a shared
+dataset, backbone, and evaluation split}. That comparison --- not the Pareto plot, which is only its
+visualization --- is the contribution here. We adopt the cost--accuracy trade-off framing of De Toni
+et al.\ (NeurIPS 2024, framing only; not implemented).
+
+The result is a \textbf{null}: on the Galaxy Zoo binary task, with a shared strong AI backbone,
+\emph{no deployable human-in-the-loop arm significantly beats AI-alone}. We report this honestly and
+explain why, rather than dressing up an overlapping confidence interval as a win.
+
+\section{Dataset and the non-expert-rater caveat}
+
+We use the \textbf{Galaxy Zoo binary 10k subset} (spiral vs.\ early-type/smooth) that Okati 2021
+uses (their footnotes 8--9), sourced from the Kaggle Galaxy Zoo Challenge aggregate vote fractions.
+
+HCT needs \textbf{real per-rater labels} (to draw two humans $h_1$, $h_2$ from a per-image urn),
+which Okati's repository does not ship. We recover them by matching each Kaggle galaxy to the
+Willett et al.\ 2013 GZ2 catalog via a content-based vote-signature crosswalk
+(\texttt{docs/HANDOFF.md} \S5): \textbf{5{,}904 of 10{,}000 images (59\%) match} at high precision;
+after dropping \texttt{star\_or\_artifact}-mode galaxies and images with too few votes for a
+without-replacement draw, \textbf{$N = 4{,}621$} survive (train 3{,}234 / val 693 / \textbf{test
+694}; \texttt{data/split\_manifest.json}). The matched subset is morphologically representative
+(binary-hardness 0.52 vs.\ 0.48 overall), so the 41\% drop is not a difficulty-selected bias --- but
+\textbf{59\% coverage is a disclosed limitation}, not full coverage.
+
+\textbf{The raters are Galaxy Zoo citizen-science volunteers, not domain experts} (Okati's ``human
+experts'' is loose terminology; \texttt{HANDOFF.md} \S2). This matters concretely: (i) the
+single-human \emph{accuracy ceiling} is the volunteer crowd's, not an astronomer's; (ii) HCT's
+tie-breaking second draw $h_2$ comes from the same volunteer vote distribution, so on genuinely
+ambiguous galaxies it is right only about as often as a coin flip. Both depress the headroom
+available to any human-querying arm. Crucially, the ``ground truth'' $y$ is itself the
+\textbf{crowd-consensus majority}, so every accuracy below is \emph{agreement with consensus, not
+with objective truth} (\S6).
+
+\section{Methods and the invariants that make the comparison fair}
+
+\begin{itemize}
+  \item \textbf{AI-alone} --- the shared backbone thresholded at 0.5 (cost 0).
+  \item \textbf{Single-human} --- one urn draw per image (cost 1).
+  \item \textbf{HCT} (HCT-1, Fig.~1): the human $h_1$ and the binarized AI decide independently; if
+    they \textbf{agree}, accept (cost 1); if they \textbf{disagree}, draw $h_2$ and take its call
+    (cost 2). Expected human cost $= 1 + P(\text{human--AI disagree})$, \textbf{bounded in $[1,2]$},
+    swept via the AI binarization threshold $\theta$ --- the \emph{only} HCT knob. HCT is a decision
+    rule, not a trained model.
+  \item \textbf{L2D-Okati} (Thm.~3): for a fixed classifier, the optimal triage thresholds the
+    per-instance gap between expected machine and human loss; a budget $b$ caps the deferral
+    fraction. Cost $=$ deferral fraction $\in [0,1]$.
+  \item \textbf{L2D-Mozannar} (eq.~10): the consistent convex surrogate $L_{\mathrm{CE}}^{\alpha}$;
+    the deferral knob $\alpha$ sweeps a smooth curve. Cost $=$ deferral fraction $\in [0,1]$.
+\end{itemize}
+
+\paragraph{Shared-backbone + frozen-split invariants}
+(\texttt{GROUND\_TRUTH.md} \S7; \texttt{HANDOFF.md} \S10): every arm consumes the \emph{same}
+committed backbone scores/embeddings and the \emph{same} seed${=}0$ 70/15/15 split (hash guarded by
+\texttt{make verify-split}); one shared metrics module computes all numbers.
+
+\paragraph{Deviation --- Option B}
+(logged, \texttt{docs/DECISIONS.md}). The L2D papers \emph{co-train} classifier and rejector. We
+instead \textbf{freeze the shared backbone and learn only the rejector/triage} on top of its
+embeddings. This is deliberate: co-training would give each L2D arm a \emph{different} classifier,
+confounding the comparison with backbone differences. Freezing makes the AI identical across all
+arms, so any measured gap is attributable to the deferral policy alone --- it \textbf{removes a
+confound rather than adding one}. The cost is that we measure these L2D methods' \emph{triage}
+quality, not their end-to-end co-training; we do not import their co-trained accuracy claims here.
+
+\section{Results}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.72\linewidth]{pareto_frontier.png}
+  \caption{HCT vs L2D --- accuracy vs expected human-query cost on the Galaxy Zoo binary subset.}
+  \label{fig:frontier}
+\end{figure}
+
+All numbers from \texttt{results/tables/summary.csv}; CIs are 95\% bootstrap over the 694 test
+instances (stochastic arms also resampled across rater-draw seeds [0--4]). The frontier is shown in
+Figure~\ref{fig:frontier}.
+
+\begin{table}[ht]
+  \centering
+  \small
+  \begin{tabular}{@{}l c c p{4.2cm} c@{}}
+    \toprule
+    Arm (policy) & Accuracy [95\% CI] & Cost & vs AI-alone & Deployable \\
+    \midrule
+    \textbf{AI-alone} & \textbf{0.829 [0.801, 0.856]} & 0 & --- (baseline) & yes \\
+    L2D-Okati (learned), $b{=}0.1$ & 0.834 [0.806, 0.861] & 0.10 & \textbf{ns} (CI overlaps) & yes \\
+    L2D-Mozannar (best deferral, $\alpha{=}0.95$) & 0.822 [0.796, 0.849] & 0.10 & \textbf{ns} (CI overlaps), below mean & yes \\
+    HCT ($\theta{=}0.1$) & 0.813 [0.788, 0.838] & 1.23 & \textbf{ns} (CI overlaps), below mean & yes \\
+    Single-human & 0.753 [0.729, 0.777] & 1.00 & \textbf{below} (CI excludes 0.829) & yes \\
+    L2D-Okati (\textbf{oracle}), $b{\approx}0.2$ & 0.892 [0.871, 0.911] & 0.17 & above --- but \textbf{non-deployable} & no \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Curve-shape and cost-regime asymmetry (stated explicitly, never obscured).}
+HCT is a \textbf{coarse marker locus}, drawn as discrete markers --- sweeping $\theta$ moves its
+expected cost only within a narrow band (observed 1.18--1.23 here) because cost is
+$1 + P(\text{disagree})$ and is structurally \textbf{bounded in $[1,2]$}. The L2D arms are
+\textbf{smooth lines} whose cost ranges over \textbf{$[0,1]$}. The two methods therefore live in
+\textbf{disjoint cost regimes} (L2D in $[0,1]$, HCT in $[1,2]$) and are \emph{not} mutually
+Pareto-comparable point-for-point; HCT is never drawn as a continuous curve. This is a genuine
+property of the methods, not an artefact of plotting.
+
+\paragraph{Reading the arms.}
+L2D-Okati(learned) peaks at 0.834 @ cost 0.10 then declines as more (often correct) machine
+decisions are handed to noisier humans; Mozannar's best deferral point (0.822) sits \emph{below}
+AI-alone in the mean (its CI still overlaps) and degrades further with deferral. HCT's accuracy is
+essentially flat ($\sim$0.81) across $\theta$ and sits below AI-alone in the mean. The Okati
+\textbf{oracle} (dashed) --- which peeks at test labels to triage perfectly --- climbs to 0.892, but
+it is a \textbf{non-deployable upper bound} and is excluded from the deployable frontier.
+
+\section{Central finding (an honest null)}
+
+\textbf{No deployable arm significantly beats AI-alone.} The verdict is computed mechanically in
+eval (\texttt{any\_deployable\_\allowbreak arm\_beats\_\allowbreak ai\_alone = false}, figure
+manifest): every deployable
+arm's CI either \textbf{overlaps} AI-alone (L2D-Okati-learned, HCT, Mozannar) or sits
+\textbf{strictly below} it (single-human is the only arm whose CI excludes 0.829 --- it is
+significantly \emph{worse}). L2D-Okati-learned's $+0.5$\,pt mean at cost 0.10 is within noise; HCT's
+mean is below AI-alone at cost $>1$.
+
+Interpretation: \textbf{on consensus-labeled Galaxy Zoo with a strong AI, human deferral buys
+auditability, not accuracy.} HCT's value is that \emph{at least one human always approves the
+deployed decision} at a bounded, transparent, training-free cost --- a governance property, not an
+accuracy gain. The oracle shows $\sim$6\,pts of headroom \emph{exists} in principle, but it is
+\textbf{unrealizable} with a deployable rejector on these frozen embeddings: the learned triage
+cannot identify which machine errors a volunteer would fix.
+
+\paragraph{Upstream self-claims are not findings here.}
+HCT-1 reports 28--44\% cost savings \emph{on its own datasets}; that is a property of those
+datasets, \textbf{not} a result on Galaxy Zoo, and we do not import it. Likewise we measure the L2D
+arms' triage over a frozen backbone (Option B), not their co-trained end-to-end numbers. Every claim
+in this report traces to an artifact under \texttt{results/}.
+
+\section{Limitations}
+
+\begin{itemize}
+  \item \textbf{Single dataset, single backbone.} One task (Galaxy Zoo binary), one frozen
+    ResNet-50. No claim generalizes beyond this setting.
+  \item \textbf{Accuracy $=$ agreement with crowd consensus, not truth} (\texttt{HANDOFF.md} \S9).
+    Because $y$ is the volunteer majority, a single human's accuracy is the majority vote share by
+    construction, and HCT's $h_2$ is $\sim$50\% on near-split galaxies by construction --- this
+    compresses inter-arm gaps and is a \emph{threat to the comparison itself}, not a footnote.
+  \item \textbf{Non-expert raters} (\S2): the human ceiling and the $h_2$ tiebreak are
+    volunteer-quality.
+  \item \textbf{59\% crosswalk coverage} (\S2): 4{,}621 of 10{,}000; disclosed, representative, but
+    not complete.
+  \item \textbf{Urn structural limits} (\texttt{HANDOFF.md} \S6): $h_1 \perp h_2 \mid x$ is enforced
+    (both are independent draws from the same per-image distribution), so \textbf{$h_2$ is a second
+    \emph{draw}, not a second \emph{human}}; the positive human--human correlation Berger studies
+    lives only in between-image urn-composition variance, and the opinion-leader ($\rho$)
+    reconstruction is \textbf{not supported} by aggregate counts.
+  \item \textbf{Option-B deviation} (\S3): triage-only, not the papers' co-training; removes a
+    backbone confound but does not evaluate end-to-end co-training.
+  \item \textbf{Reproducibility boundary} (\texttt{docs/REPRODUCE.md}): \texttt{make all} regenerates
+    this report's figure and table deterministically on CPU from the committed frozen artifacts; the
+    backbone training + embedding export (GPU/Colab, \texttt{notebooks/m2\_colab.ipynb}) and the
+    raw-catalog label build are upstream of that interface and are not re-run by \texttt{make all}.
+\end{itemize}
+
+\end{document}
