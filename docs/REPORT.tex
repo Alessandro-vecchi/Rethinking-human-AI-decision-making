@@ -14,6 +14,7 @@
 \usepackage{caption}
 \usepackage{microtype}
 \usepackage{enumitem}
+\usepackage[round]{natbib}
 \usepackage[hidelinks]{hyperref}
 
 \graphicspath{{../results/figures/}}
@@ -22,9 +23,6 @@
 \setlist{itemsep=0pt, topsep=2pt, parsep=0pt}
 \captionsetup{font=small, skip=4pt}
 \setlength{\emergencystretch}{2em}  % absorb minor overfull boxes from long \texttt tokens
-
-% arXiv identifiers rendered as links (cosmetic; the identifier text is the sanctioned citation).
-\newcommand{\arxiv}[1]{\href{https://arxiv.org/abs/#1}{arXiv:#1}}
 
 \title{Auditability, not accuracy: a head-to-head of Hybrid Confirmation\\
 Trees and Learning-to-Defer on Galaxy Zoo}
@@ -37,16 +35,16 @@ Trees and Learning-to-Defer on Galaxy Zoo}
 
 \section{Framing and contribution}
 
-Human--AI decision pipelines are usually evaluated within a single family of methods: a
+Human-AI decision pipelines are usually evaluated within a single family of methods: a
 learning-to-defer (L2D) method against other L2D methods, or a confirmation rule against a
 single-human or AI-alone baseline. In learning to defer, a policy routes some inputs to a human
 instead of letting the model decide, trading the cost of querying a human for accuracy. The Hybrid
-Confirmation Tree (HCT) of Berger et al.\ (HCT-1, \arxiv{2602.02375}; follow-up HCT-2,
-\arxiv{2603.29866}) and the L2D line of Okati, De \& G\'omez-Rodr\'iguez (NeurIPS 2021,
-\arxiv{2103.08902}) and Mozannar \& Sontag (ICML 2020, \arxiv{2006.01862}) have, to our knowledge,
+Confirmation Tree (HCT) of \citet{berger2026hct} (HCT-1; follow-up HCT-2,
+\citealp{berger2026beyond}) and the L2D line of \citet{okati2021differentiable} and
+\citet{MozannarS20} have, to our knowledge,
 never been compared head-to-head on a shared dataset, backbone, and evaluation split. That
 comparison is the contribution here. The Pareto plot is only its visualization. We adopt the
-cost--accuracy trade-off framing of De Toni et al.\ (NeurIPS 2024, framing only; not implemented).
+cost/accuracy trade-off framing of \citet{detoni2024predsets} (framing only; not implemented).
 
 The result is a null: on the Galaxy Zoo binary task, with a shared strong AI backbone, no deployable
 human-in-the-loop arm significantly beats AI-alone.
@@ -77,8 +75,8 @@ draw, $N = 4{,}621$ survive (train 3{,}234 / val 693 / test 694). The matched su
 morphologically representative (binary-hardness 0.52 vs.\ 0.48 overall), so the 41\% drop is not a
 difficulty-selected bias. Coverage is 59\%, not the full set.
 
-The raters are Galaxy Zoo citizen-science volunteers, not domain experts; Okati's ``human experts''
-is loose terminology. This matters concretely. The single-human accuracy ceiling is the volunteer
+The raters are Galaxy Zoo citizen-science volunteers, not domain experts. Okati's ``human experts''
+is loose terminology and this matters, since the single-human accuracy ceiling is the volunteer
 crowd's, not an astronomer's. HCT's tie-breaking second draw $h_2$ comes from the same volunteer
 vote distribution, so on genuinely ambiguous galaxies it is right only about as often as a coin
 flip. Both effects depress the headroom available to any human-querying arm. The ``ground truth''
@@ -107,7 +105,7 @@ split, guarded by a hash check. One shared metrics module computes all numbers.
 
 \paragraph{Deviation: Option B.}
 The L2D papers co-train classifier and rejector. We instead freeze the shared backbone and learn
-only the rejector on top of its embeddings. This is deliberate. Co-training would give each L2D arm
+only the rejector on top of its embeddings. This is because co-training would give each L2D arm
 a different classifier, confounding the comparison with backbone differences. Freezing makes the AI
 identical across all arms, so any measured gap is attributable to the deferral policy alone. It
 removes a confound. The cost is that we measure these methods' triage quality, not their end-to-end
@@ -147,7 +145,7 @@ Figure~\ref{fig:frontier}.
 
 \paragraph{Curve-shape and cost-regime asymmetry.}
 HCT is a coarse marker locus, drawn as discrete markers. Sweeping $\theta$ moves its expected cost
-only within a narrow band, observed here as 1.18--1.23, because cost is $1 + P(\text{disagree})$ and
+only within a narrow band, observed here as 1.18-1.23, because cost is $1 + P(\text{disagree})$ and
 is structurally bounded in $[1,2]$. The L2D arms are smooth lines whose cost ranges over $[0,1]$.
 The two methods therefore live in disjoint cost regimes, L2D in $[0,1]$ and HCT in $[1,2]$, and are
 not mutually Pareto-comparable point for point. HCT is never drawn as a continuous curve. This is a
@@ -161,7 +159,7 @@ flat at about 0.81 across $\theta$ and sits below AI-alone in the mean. The Okat
 peeks at test labels to triage perfectly and climbs to 0.892, but it is a non-deployable upper bound
 and is excluded from the deployable frontier.
 
-\section{Central finding (an honest null)}
+\section{The central finding is an honest null}
 
 No deployable arm significantly beats AI-alone. The verdict is computed mechanically in evaluation.
 Every deployable arm's CI either overlaps AI-alone (L2D-Okati-learned, HCT, Mozannar) or sits
@@ -177,7 +175,7 @@ deployable rejector on these frozen embeddings, because the learned triage canno
 machine errors a volunteer would fix.
 
 \paragraph{Upstream self-claims are not findings here.}
-HCT-1 reports 28--44\% cost savings on its own datasets. That is a property of those datasets, not a
+HCT-1 \citep{berger2026hct} reports 28--44\% cost savings on its own datasets. That is a property of those datasets, not a
 result on Galaxy Zoo, and we do not import it. Likewise we measure the L2D arms' triage over a
 frozen backbone (Option B), not their co-trained end-to-end numbers. Every claim in this report
 traces to a released artifact.
@@ -203,9 +201,12 @@ traces to a released artifact.
   \item \textbf{Option-B deviation} (\S3): triage-only, not the papers' co-training; removes a
     backbone confound but does not evaluate end-to-end co-training.
   \item \textbf{Reproducibility.} The code and frozen artifacts needed to reproduce this report's
-    figure and table are released, and regeneration is deterministic. The one-off backbone training
+    figure and table are released\footnote{\url{https://github.com/Alessandro-vecchi/Rethinking-human-AI-decision-making}}, and regeneration is deterministic. The one-off backbone training
     and embedding export, and the raw-catalog label build sit upstream of that interface and are
     not re-run.
 \end{itemize}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
 
 \end{document}
