@@ -77,3 +77,7 @@ build/
 *.synctex.gz
 *.synctex.gz(busy)
 *.synctex(busy)
+
+# Markdown kept local-only, not published to GitHub (README is the exception)
+*.md
+!/README.md

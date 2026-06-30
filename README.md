@@ -17,13 +17,7 @@ compare on the accuracy-vs-human-query-cost Pareto frontier?
 **Dataset.** Galaxy Zoo binary 10k subset from Okati 2021 (fns 8–9). 30+ labels/image from
 **citizen-science volunteers, not domain experts** — stated explicitly in the report.
 
-## This is an agent-built repo
-Implementation is delegated to coordinated agents. Read **`CLAUDE.md`** first — it is the operating
-contract. Ground truth about the papers/dataset lives in **`docs/GROUND_TRUTH.md`** (verified, with
-corrections to the original brief). The plan is **`docs/ROADMAP.md`**; work packets are `tasks/M*.md`;
-roles are `.claude/agents/`.
-
-Non-negotiables (see CLAUDE.md): binary only; one shared AI backbone + one frozen split across all
+**Non-negotiables.** Binary only; one shared AI backbone + one frozen split across all
 arms; use upstream code (vendored in `third_party/`) as the baseline; state the HCT/L2D curve-shape
 asymmetry everywhere; tests before implementation.
 
@@ -33,19 +27,10 @@ make env           # Python 3.11+, pinned deps
 make test          # unit tests (must pass before any arm is "done")
 make all           # data → verify-split → backbone → arms → eval → report
 ```
-`make all` regenerates every figure/table from a clean checkout, with bootstrap CIs. Determinism
-and uncertainty conventions: `docs/conventions/REPRODUCIBILITY.md`.
+`make all` regenerates every figure/table from a clean checkout, with bootstrap CIs.
 
 ## Layout
 ```
-CLAUDE.md                operating contract (agents read first)
-docs/GROUND_TRUTH.md     verified facts + corrections + open questions
-docs/ROADMAP.md          milestone DAG + gates
-docs/DECISIONS.md        append-only decision log
-docs/conventions/        TESTING / REPRODUCIBILITY / CITATIONS / CODING
-.claude/agents/          orchestrator, data-engineer, arm-implementer, evaluator, verifier
-.claude/commands/        verify-claim, run-milestone
-tasks/                   M1..M7 work packets
 src/haidc/               data / arms / eval
 third_party/             vendored Okati + Mozannar repos (pinned by SHA)
 ```
